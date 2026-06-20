@@ -96,23 +96,37 @@ def _cmd_index(args) -> int:
 
     s = index.scan(args.folder)
     print(f"indexed {args.folder}: +{s['indexed']} new, {s['skipped']} skipped, "
-          f"{s['moved']} moved, {s['removed']} removed, {s['errored']} errored")
+          f"{s['removed']} removed, {s['untrusted']} untrusted, {s['errored']} errored")
     return 0
 
 
 def _cmd_query(args) -> int:
     from . import index
 
+    if args.list:
+        rows = index.list_all(args.folder)
+        for r in rows:
+            print(f"{r['path']}\t{r.get('method') or ''}\t{r.get('title') or ''}".rstrip())
+        if not rows:
+            print("[dnr] index is empty (run `dnr index <folder>`)", file=sys.stderr)
+        return 0
     if args.match:
-        for p in index.query_match(args.folder, args.match):
+        hits = index.query_match(args.folder, args.match)
+        for p in hits:
             print(p)
-    elif args.where:
-        for r in index.query_where(args.folder, args.where):
-            print(f"{r['path']}\t{r.get('title') or ''}")
-    else:
-        print("dnr query: provide --match TEXT or --where SQL", file=sys.stderr)
-        return 2
-    return 0
+        if not hits:
+            hint = " — terms under 3 chars can't match the trigram index" if len(args.match.strip()) < 3 else ""
+            print(f"[dnr] no matches for {args.match!r}{hint}", file=sys.stderr)
+        return 0
+    if args.where:
+        rows = index.query_where(args.folder, args.where)
+        for r in rows:
+            print(r["path"] + (f"\t{r['title']}" if r.get("title") else ""))
+        if not rows:
+            print("[dnr] no rows match", file=sys.stderr)
+        return 0
+    print("dnr query: provide --match TEXT, --where SQL, or --list", file=sys.stderr)
+    return 2
 
 
 def _cmd_strip(args) -> int:
@@ -218,8 +232,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pq = sub.add_parser("query", help="query a folder's index")
     pq.add_argument("folder")
-    pq.add_argument("--match", help="full-text search (FTS5, CJK-friendly)")
+    pq.add_argument("--match", help="full-text search (FTS5 trigram; terms 3+ chars)")
     pq.add_argument("--where", help="SQL WHERE over the fixed columns")
+    pq.add_argument("--list", action="store_true", help="list every indexed record")
     pq.set_defaults(fn=_cmd_query)
 
     pin = sub.add_parser("init", help="install the dnr agent skill into this repo + ensure a key")

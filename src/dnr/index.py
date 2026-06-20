@@ -1,15 +1,20 @@
 """Per-folder index (M5).
 
-`.dnr.db` (SQLite + FTS5) harvests the records already embedded in a folder's files
-into the fixed-contract `dnr` table, so an agent can query a whole folder without
-opening each file. Regenerable — the truth is in the files (vision.md §11).
+`.dnr.db` (SQLite + FTS5) harvests records already embedded in a folder's files into
+the fixed-contract `dnr` table, so an agent can query a folder without opening each
+file. Regenerable — the truth is in the files (vision.md §11).
 
-`index ≠ ingest`: this only *harvests* existing records (cheap, no transcription).
-Incremental: stat → (changed?) → harvest; content_hash match at a new path = a move
-(update path only); files gone from disk are tombstoned.
+Security (fixed after multi-user dogfooding): the index is part of the trust boundary.
+`scan` harvests a record ONLY if it is signed by a trusted key AND its content_hash
+matches the file — the same gate as `read` (vision.md §9). Unsigned / forged / tampered
+records are never indexed, so `query` cannot surface them.
 
-CJK note: FTS5 uses the `trigram` tokenizer so Korean/CJK substring search works
-without ICU (M6).
+Identity: each row is keyed by **path** (one row per file), so two distinct files with
+identical content do not collide. A file with no valid record is not indexed (and any
+stale row for it is removed); files gone from disk are tombstoned.
+
+`index ≠ ingest`: this only harvests existing records (cheap, no transcription).
+CJK: FTS5 uses the `trigram` tokenizer (substring match, 3+ chars).
 """
 from __future__ import annotations
 
@@ -19,7 +24,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from . import embed as _embed
-from . import hashing
+from . import hashing, keyring, signing
 from .formats import SUPPORTED
 
 DB_NAME = ".dnr.db"
@@ -27,24 +32,23 @@ SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", ".dnr", ".i
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS dnr (
-  content_hash TEXT PRIMARY KEY,
-  path TEXT, mime TEXT, bytes INTEGER, mtime REAL, indexed_at TEXT,
+  content_hash TEXT, path TEXT, mime TEXT, bytes INTEGER, mtime REAL, indexed_at TEXT,
   method TEXT, transcriber TEXT, version TEXT, lang TEXT,
   title TEXT, summary TEXT, tags TEXT, transcript TEXT,
-  fields TEXT, extras TEXT, whole_hash TEXT
+  fields TEXT, extras TEXT, whole_hash TEXT,
+  PRIMARY KEY (path)
 );
 CREATE VIRTUAL TABLE IF NOT EXISTS dnr_fts USING fts5(
-  content_hash UNINDEXED, title, summary, transcript, tokenize='trigram'
+  path UNINDEXED, title, summary, transcript, tokenize='trigram'
 );
 CREATE TABLE IF NOT EXISTS _dnr_readme (k TEXT PRIMARY KEY, v TEXT);
 """
 
 _README = {
-    "about": "dnr per-folder index. Fixed table `dnr` (content_hash PRIMARY KEY) + FTS5 "
-             "`dnr_fts` (trigram). Regenerable from the files. See https://github.com/.../dnr.",
+    "about": "dnr per-folder index. Fixed table `dnr` (row per file, PRIMARY KEY path) + FTS5 "
+             "`dnr_fts` (trigram). Only trusted (signed + content_hash-matching) records are indexed.",
     "examples": "SELECT path FROM dnr WHERE method='vision' AND lang='ko';\n"
-                "SELECT d.path FROM dnr_fts JOIN dnr d ON d.content_hash=dnr_fts.content_hash "
-                "WHERE dnr_fts MATCH 'damages';\n"
+                "SELECT d.path FROM dnr_fts JOIN dnr d ON d.path=dnr_fts.path WHERE dnr_fts MATCH 'damages';\n"
                 "SELECT path FROM dnr WHERE json_extract(fields,'$.start_date') > '2024-01-01';",
 }
 
@@ -73,9 +77,12 @@ def _iter_files(folder):
                 yield os.path.join(root, fn)
 
 
-def _harvest(con, folder, abspath, rec) -> None:
-    ch = rec.get("content_hash")
-    st = os.stat(abspath)
+def _delete_row(con, rel: str) -> None:
+    con.execute("DELETE FROM dnr WHERE path=?", (rel,))
+    con.execute("DELETE FROM dnr_fts WHERE path=?", (rel,))
+
+
+def _harvest(con, folder, abspath, rec, st) -> None:
     rel = os.path.relpath(abspath, folder)
     tr = rec.get("transcript") or {}
     prov = rec.get("provenance") or {}
@@ -83,7 +90,7 @@ def _harvest(con, folder, abspath, rec) -> None:
     src = rec.get("source") or {}
     tags = fields.get("tags")
     row = (
-        ch, rel, src.get("mime"), st.st_size, st.st_mtime,  # bytes = on-disk size (used by incremental stat-skip)
+        rec.get("content_hash"), rel, src.get("mime"), st.st_size, st.st_mtime,
         datetime.now(timezone.utc).isoformat(),
         prov.get("method"), prov.get("transcriber"), prov.get("version"), tr.get("lang"),
         fields.get("title"), fields.get("summary"),
@@ -93,22 +100,20 @@ def _harvest(con, folder, abspath, rec) -> None:
         hashing.whole_hash(abspath),
     )
     con.execute("INSERT OR REPLACE INTO dnr VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", row)
-    con.execute("DELETE FROM dnr_fts WHERE content_hash=?", (ch,))
-    con.execute(
-        "INSERT INTO dnr_fts(content_hash,title,summary,transcript) VALUES (?,?,?,?)",
-        (ch, fields.get("title"), fields.get("summary"), tr.get("text")),
-    )
+    con.execute("DELETE FROM dnr_fts WHERE path=?", (rel,))
+    con.execute("INSERT INTO dnr_fts(path,title,summary,transcript) VALUES (?,?,?,?)",
+                (rel, fields.get("title"), fields.get("summary"), tr.get("text")))
 
 
-def scan(folder) -> dict:
-    """Incrementally bring the folder's index up to date. Returns counts."""
+def scan(folder, trust: dict | None = None) -> dict:
+    """Incrementally bring the folder's index up to date. Only trusted records are indexed."""
     folder = str(folder)
+    trust = keyring.default_trust() if trust is None else trust
     con = open_db(folder)
     try:
-        existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime, content_hash FROM dnr")}
+        existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime FROM dnr")}
         seen_paths: set[str] = set()
-        seen_hashes: set[str] = set()
-        indexed = skipped = moved = removed = errored = 0
+        indexed = skipped = removed = errored = untrusted = 0
 
         for abspath in _iter_files(folder):
             rel = os.path.relpath(abspath, folder)
@@ -118,44 +123,43 @@ def scan(folder) -> dict:
                 prev = existing.get(rel)
                 if prev and prev["bytes"] == st.st_size and abs((prev["mtime"] or 0) - st.st_mtime) < 1e-6:
                     skipped += 1
-                    seen_hashes.add(prev["content_hash"])
                     continue
                 rec = _embed.extract(abspath)
-                if rec is None:
-                    continue  # no record (or unreadable) -> skip; index != ingest
-                ch = rec.get("content_hash")
-                hit = con.execute("SELECT path FROM dnr WHERE content_hash=?", (ch,)).fetchone()
-                if hit and hit["path"] != rel:  # same content at a new path = a move
-                    con.execute("UPDATE dnr SET path=?, mtime=?, bytes=? WHERE content_hash=?",
-                                (rel, st.st_mtime, st.st_size, ch))
-                    moved += 1
-                    seen_hashes.add(ch)
+                trusted = (
+                    rec is not None
+                    and signing.verify(rec, trust)
+                    and rec.get("content_hash") == hashing.content_hash(abspath)
+                )
+                if not trusted:
+                    if rec is not None:
+                        untrusted += 1  # present but forged/unsigned/mismatched -> never indexed
+                    if prev is not None:  # had a row (e.g. record was stripped) -> drop it
+                        _delete_row(con, rel)
+                        removed += 1
                     continue
-                _harvest(con, folder, abspath, rec)
+                _harvest(con, folder, abspath, rec, st)
                 indexed += 1
-                seen_hashes.add(ch)
             except Exception:
                 errored += 1  # one bad file must not abort the whole scan
 
-        for path, r in existing.items():
-            if path not in seen_paths and r["content_hash"] not in seen_hashes:
-                con.execute("DELETE FROM dnr WHERE content_hash=?", (r["content_hash"],))
-                con.execute("DELETE FROM dnr_fts WHERE content_hash=?", (r["content_hash"],))
+        for path in list(existing):
+            if path not in seen_paths:
+                _delete_row(con, path)
                 removed += 1
 
         con.commit()
-        return {"indexed": indexed, "skipped": skipped, "moved": moved,
-                "removed": removed, "errored": errored}
+        return {"indexed": indexed, "skipped": skipped, "removed": removed,
+                "errored": errored, "untrusted": untrusted}
     finally:
         con.close()
 
 
 def query_match(folder, text: str) -> list[str]:
-    """Full-text search; returns matching paths (trigram, CJK-friendly)."""
+    """Full-text search; returns matching paths (trigram — substrings of 3+ chars)."""
     con = open_db(folder)
     try:
         rows = con.execute(
-            "SELECT d.path FROM dnr_fts JOIN dnr d ON d.content_hash = dnr_fts.content_hash "
+            "SELECT d.path FROM dnr_fts JOIN dnr d ON d.path = dnr_fts.path "
             "WHERE dnr_fts MATCH ? ORDER BY rank",
             (text,),
         ).fetchall()
@@ -170,5 +174,14 @@ def query_where(folder, where: str, params: tuple = ()) -> list[dict]:
     try:
         rows = con.execute(f"SELECT * FROM dnr WHERE {where}", params).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        con.close()
+
+
+def list_all(folder) -> list[dict]:
+    """Return every indexed row (the inventory)."""
+    con = open_db(folder)
+    try:
+        return [dict(r) for r in con.execute("SELECT * FROM dnr ORDER BY path")]
     finally:
         con.close()

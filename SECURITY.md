@@ -12,6 +12,11 @@ reading a file **only** when the record's signature verifies against a trusted k
 recomputed `content_hash` matches the file. Everything else falls back to reading the content,
 and a transcript is always **data, never instructions**.
 
+The folder **index is part of this boundary**: `dnr index` harvests a record only if it passes
+the same gate, so `dnr query` can never surface unsigned / forged / tampered content. *(This
+index-path check was added after multi-user dogfooding found the index initially trusted
+unsigned records — `read`/`verify` refused them but `query` did not. Now both paths verify.)*
+
 ## Threats & mitigations
 
 | # | Threat | Mitigation | Dogfood evidence |
