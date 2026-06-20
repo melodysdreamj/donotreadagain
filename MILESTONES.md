@@ -4,7 +4,9 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 **v0.1 goal —** a working `dnr` that ingests PDF + audio (transcribe → canonical-hash → deterministic embed → sign), builds a per-folder queryable index (Korean/CJK search included), and lets an agent read/query with **no install**. Fundamentals-first: the `content_hash` and signing primitives are *proven* before the rest is layered on.
 
-**Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8. &nbsp; **v0.1 cut** = M1–M8 (PDF + audio). &nbsp; **M9–M13** = operability, security, the standard, scale, release.
+**Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8 → M9. &nbsp; **v0.1 cut** = M1–M8 (build) + **M9 (dogfood — the real release-readiness gate)**. &nbsp; **M10–M14** = operability, security, the standard, scale, release.
+
+**Progress (2026-06-20):** package scaffolded (`src/dnr/`) — `hashing` (content_hash PDF/mp3/wav + whole_hash), `record` (RFC 8785 JCS), `embed` (PDF/mp3/sidecar; gates 1·2·4), `signing` (Ed25519 + trust list + forgery rejection). **22 tests green.** M1–M3 cores landed; remaining: golden vectors / cross-tool determinism, more carriers + proper `dnr:` namespace, NFC, keyring, full CLI.
 
 ---
 
@@ -17,27 +19,27 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 ## 🔜 M1 — Canonicalization core + conformance harness
 > The single primitive everything rests on — *and* the test infra that makes "any tool agrees" real.
-- [ ] `content_hash(pdf)` — decompressed content streams + image XObjects, page order
-- [ ] `content_hash(audio)` — audio frames excluding tags · `content_hash(image)` — decoded pixels · `content_hash(ooxml)` — sorted member manifest
-- [ ] Canonical record serialization — SHA-256 + RFC 8785 JCS + NFC
+- [x] `content_hash(pdf)` — decompressed content streams + image XObjects, page order
+- [~] `content_hash(audio)` done (mp3 frames + wav data chunk); remaining: `content_hash(image)` (decoded pixels), `content_hash(ooxml)` (member manifest)
+- [~] Canonical record serialization — SHA-256 + RFC 8785 JCS done; NFC text normalization remaining
 - [ ] **Conformance harness** — golden test vectors per format + a runnable suite, wired into **CI** (gates run every commit)
 - [ ] **Cross-tool / cross-version determinism** — same `content_hash` across pikepdf/qpdf versions (and a 2nd library), not just self-consistency
 - [ ] Follow-up validations: real **scanned** PDF (image-only), multi-MB payload, real **mp3**
 - **Done when:** two independent tools/versions agree on `content_hash` for a real corpus, with published vectors.
 
-## ⬜ M2 — Embed / extract engine (carriers)
+## 🔜 M2 — Embed / extract engine (carriers)
 > Write & read the record in each format's native slot, safely.
-- [ ] Write: XMP (PDF/JPEG/PNG/TIFF/MP4) · ID3 `TXXX` (mp3) · Vorbis (flac/ogg) · OOXML part · sidecar `.dnr.json`
-- [ ] **Deterministic embed** (`deterministic_id`, no auto-timestamps) — gate 4
-- [ ] **Atomic write** (temp + fsync + rename) — never mutate the original in place
-- [ ] Preserve native tags (gate 2) · read-back + verify `content_hash` (gate 1)
+- [~] Write: **PDF (XMP) · mp3 (ID3 TXXX) · sidecar `.dnr.json`** done; remaining: proper `dnr:` namespace, JPEG/PNG/TIFF/MP4, Vorbis, OOXML
+- [x] **Deterministic embed** (`deterministic_id`, no auto-timestamps) — gate 4
+- [x] **Atomic write** (temp + fsync + rename) — never mutate the original in place
+- [x] Preserve native tags (gate 2) · read-back + verify `content_hash` (gate 1)
 - [ ] Sidecar fallback rules: no slot / over size limit / read-only / sensitive
 - **Done when:** all 4 conformance gates pass per carrier in CI.
 
-## ⬜ M3 — Signing & trust
+## 🔜 M3 — Signing & trust
 > Make a record trustworthy enough to justify skipping a re-read.
-- [ ] `record_hash = sha256(JCS(record − sig))`, Ed25519 sign / verify
-- [ ] Keygen, local keyring, trust list (public keys)
+- [x] `record_hash = sha256(JCS(record − sig))`, Ed25519 sign / verify
+- [~] Keygen + trust list done; persistent local keyring remaining
 - [ ] Verify → trust tiers: signed + trusted + hash-match → **skip-reparse**; else **search-only + fallback**
 - [ ] `transcript` always handled as untrusted data, never as instructions
 - **Done when:** forged / altered / untrusted-key records are correctly refused for skip-reparse.
@@ -83,7 +85,16 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] **One-phrase bootstrap** — `dnr init` self-installs the skill stanza into the repo's agent surface (AGENTS.md / CLAUDE.md / .cursor rules; auto-detected, idempotent, append a marked block) + verifies the tool. So a user adopts by telling their agent *"apply dnr"* → it runs `uvx dnr init`. Inspectable, pinned, touches the repo only.
 - **Done when:** an agent given only the skill queries a dnr folder and skips re-parsing correctly; `dnr init` bootstraps from a single user phrase.
 
-## ⬜ M9 — Reversibility & corpus operability
+## ⬜ M9 — Agent scenario testing & dogfooding
+> Drive the whole thing with real agents across many scenarios — the bugs that specs & unit tests miss surface here, and feed M10–M12. This is the real release-readiness gate.
+- [ ] **Scenario matrix**, run by agents: ingest / query / read / route / move / edit / re-ingest across diverse inputs — legal PDFs, scanned, audio, mixed folders, huge files, cold folders, stale index, moved/renamed files
+- [ ] **Multi-harness**: Claude Code / Codex / Cursor — does each *actually* skip re-parsing given only the skill?
+- [ ] **Adversarial / edge scenarios**: malicious record (injection), forged signature, corrupt / encrypted file, concurrent agents, re-encoded transport
+- [ ] **Measure**: cache hit-rate · protocol-compliance rate · token / latency delta · a failure taxonomy → backlog for M10 (operability) & M11 (security)
+- [ ] Run as **multi-agent workflows** (fan scenarios out in parallel)
+- **Done when:** agents complete the scenario matrix with a known failure list + a real hit-rate / savings number (the seed of the M14 benchmark).
+
+## ⬜ M10 — Reversibility & corpus operability
 > Make it safe to undo, and runnable at corpus scale.
 - [ ] `dnr strip` (un-embed, restore original) · **bulk rollback** of a bad ingest
 - [ ] **Resumable / idempotent** ingest after crash · `--dry-run`
@@ -92,7 +103,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] Backup/dedup awareness (embedding changes whole_hash → re-backup churn)
 - **Done when:** a bad bulk ingest is fully revertible and a crashed run resumes cleanly.
 
-## ⬜ M10 — Security & privacy
+## ⬜ M11 — Security & privacy
 > Treat every embedded record as untrusted input; don't leak on share.
 - [ ] **Threat-model document** — injection, forgery, TOFU poisoning, share-time exfiltration, chain-of-custody
 - [ ] `transcript` wrapped as untrusted data; an injection test corpus
@@ -100,21 +111,21 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] Index / FTS / vector poisoning sanitization
 - **Done when:** a malicious dnr file cannot steer a consuming agent or pass as trusted.
 
-## ⬜ M11 — Spec formalization (the standard)
+## ⬜ M12 — Spec formalization (the standard)
 > Make it implementable by others, and able to evolve.
 - [ ] `spec/dnr-0.1.md` + `dnr.schema.json` (JSON Schema)
 - [ ] Carrier mapping table · per-format canonicalization algorithms · conformance vectors
 - [ ] Versioning / compatibility rules · profile registry · change-control process (governance seed)
 - **Done when:** a second, independent implementation passes the conformance vectors.
 
-## ⬜ M12 — Format expansion & scale hardening
+## ⬜ M13 — Format expansion & scale hardening
 - [ ] Remaining carriers (FLAC / OGG / M4A / MP4·MOV / docx·xlsx / PNG·TIFF)
 - [ ] Large-corpus performance · multi-agent stress · recovery primitives at scale
 
-## ⬜ M13 — Release, governance & adoption
+## ⬜ M14 — Release, governance & adoption
 > Ship, then earn adoption with **proof** — not cold asks. (See "Adoption strategy" below.)
 - [ ] v0.1 public release on GitHub
-- [ ] **Benchmark** (the key adoption asset): measured token / latency savings on re-reads + agent protocol-compliance rate
+- [ ] **Benchmark** (the key adoption asset): measured token / latency savings on re-reads + agent protocol-compliance rate (built on M9's numbers)
 - [ ] 2-minute demo · one-command try (`uvx dnr …`)
 - [ ] **Launch posts** (GeekNews / Show HN) — lead with the demo + benchmark; CTA = the one-phrase bootstrap (`uvx dnr init`). A spike, not a strategy — only after v0.1 + the try-path are frictionless.
 - [ ] **Opt-in surfaces first**: MCP server + skill/`AGENTS.md` snippet (users adopt without any maintainer PR)
@@ -125,7 +136,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 ---
 
-### Adoption strategy (M13) — why "proof-then-pitch", not cold PRs
+### Adoption strategy (M14) — why "proof-then-pitch", not cold PRs
 1. **Prove first.** Maintainers adopt things that already work + have a number, not specs. Ship → benchmark (token/latency savings) → a few real users → *then* integrate.
 2. **Opt-in beats PR.** Consumption is ambient `sqlite3`, so the integration is tiny — and an **MCP server / skill snippet** lets users turn it on with zero maintainer change, sidestepping PR rejection. Reserve real PRs for projects with a plugin/tool registry.
 3. **Benefit-first messaging.** Not "adopt my standard" — "your agent re-parses PDFs every turn; drop this in for an N% saving." Show, don't tell.
