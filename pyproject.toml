@@ -18,6 +18,11 @@ dependencies = [
   "python-docx",
 ]
 
+[project.urls]
+Homepage = "https://github.com/donotreadagain/donotreadagain"
+Repository = "https://github.com/donotreadagain/donotreadagain"
+Issues = "https://github.com/donotreadagain/donotreadagain/issues"
+
 [project.optional-dependencies]
 dev = ["pytest", "fpdf2"]
 
