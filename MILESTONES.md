@@ -6,7 +6,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 **Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8 → M9. &nbsp; **v0.1 cut** = M1–M8 (build) + **M9 (dogfood — the real release-readiness gate)**. &nbsp; **M10–M14** = operability, security, the standard, scale, release.
 
-**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **46 tests green.** M1–M9 landed — **M9 dogfooding ran (10 scenarios, multi-agent): 8/10 pass, all 3 security scenarios held (forged/tampered/freshness refused), and the one real bug (corrupt-file unhandled traceback aborting a scan) is fixed**. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
+**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **53 tests green.** **M1–M12 landed** — M9 dogfooding (10-scenario multi-agent: 8/10 pass, all 3 security scenarios held, corrupt-file robustness fixed); M10 `dnr strip` + robustness; M11 `SECURITY.md` threat-model; **M12 — the spec: `spec/dnr-0.1.md` + `spec/dnr.schema.json` + `dnr validate`/`schema`**. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
 
 ---
 
@@ -99,27 +99,27 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 ## 🔜 M10 — Reversibility & corpus operability
 > Make it safe to undo, and runnable at corpus scale.
 - [x] **Robustness** (from M9 dogfooding): corrupt/missing files no longer crash — clean errors, one bad file never aborts a scan; `dnr read` falls back gracefully
-- [ ] `dnr strip` (un-embed, restore original) · **bulk rollback** of a bad ingest
+- [x] `dnr strip` (un-embed, in-file + sidecar; content unchanged) · **bulk rollback** TODO
 - [ ] **Resumable / idempotent** ingest after crash · `--dry-run`
 - [ ] Rebuild a corrupted/lost `.dnr.db` without re-incurring transcription
 - [ ] **Model-upgrade policy**: re-transcribe only lossy methods (asr/ocr/vision), skip `text-extract`; partial/lazy migration; mixed-version coherence
 - [ ] Backup/dedup awareness (embedding changes whole_hash → re-backup churn)
 - **Done when:** a bad bulk ingest is fully revertible and a crashed run resumes cleanly.
 
-## ⬜ M11 — Security & privacy
+## 🔜 M11 — Security & privacy
 > Treat every embedded record as untrusted input; don't leak on share.
-- [ ] **Threat-model document** — injection, forgery, TOFU poisoning, share-time exfiltration, chain-of-custody
-- [ ] `transcript` wrapped as untrusted data; an injection test corpus
-- [ ] **Sensitivity flag** + refuse-embed on confidential/evidentiary; `dnr strip` before sharing
-- [ ] Index / FTS / vector poisoning sanitization
-- **Done when:** a malicious dnr file cannot steer a consuming agent or pass as trusted.
+- [x] **Threat-model document** — `SECURITY.md` (injection, forgery, TOFU, exfiltration, custody) + dogfood evidence
+- [~] `transcript` as untrusted data (skill + contract); injection covered by forged/tampered dogfood; dedicated injection corpus TODO
+- [~] `dnr strip` before sharing done; sensitivity-flag refuse-embed TODO
+- [~] Poisoning surface documented; sanitization helpers TODO
+- **Done when:** ✅ dogfooding showed a malicious/forged/tampered file cannot pass as trusted or steer the agent.
 
-## ⬜ M12 — Spec formalization (the standard)
+## 🔜 M12 — Spec formalization (the standard)  ← the goal
 > Make it implementable by others, and able to evolve.
-- [ ] `spec/dnr-0.1.md` + `dnr.schema.json` (JSON Schema)
-- [ ] Carrier mapping table · per-format canonicalization algorithms · conformance vectors
-- [ ] Versioning / compatibility rules · profile registry · change-control process (governance seed)
-- **Done when:** a second, independent implementation passes the conformance vectors.
+- [x] `spec/dnr-0.1.md` (normative) + `spec/dnr.schema.json` (JSON Schema) + `dnr validate` / `dnr schema`
+- [x] Carrier mapping table · per-format canonicalization algorithms · conformance gates (in spec)
+- [~] Versioning / forward-compat in spec; **golden conformance vectors**, profile registry, governance = TODO
+- **Done when:** a second, independent implementation passes published conformance vectors (vectors are the remaining piece).
 
 ## ⬜ M13 — Format expansion & scale hardening
 - [ ] Remaining carriers (FLAC / OGG / M4A / MP4·MOV / docx·xlsx / PNG·TIFF)

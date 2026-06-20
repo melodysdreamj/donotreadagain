@@ -169,3 +169,80 @@ def extract(path):
     fn = _EXTRACT.get(ext)
     rec = fn(path) if fn is not None else None
     return rec if rec is not None else extract_sidecar(path)
+
+
+# -------------------------------------------------------------------------- strip
+def strip_pdf(path) -> bool:
+    import pikepdf
+
+    if extract_pdf(path) is None:
+        return False
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        with pikepdf.open(io.BytesIO(data)) as pdf:
+            with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
+                try:
+                    del meta["dc:description"]
+                except Exception:
+                    pass
+            pdf.save(tmp, deterministic_id=True)
+        os.replace(tmp, path)
+        return True
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def strip_mp3(path) -> bool:
+    from mutagen.id3 import ID3
+
+    try:
+        tags = ID3(path)
+    except Exception:
+        return False
+    if not tags.getall("TXXX:dnr"):
+        return False
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        t = ID3(tmp)
+        t.delall("TXXX:dnr")
+        t.save(tmp, padding=lambda _i: 0)
+        os.replace(tmp, path)
+        return True
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+_STRIP = {".pdf": strip_pdf, ".mp3": strip_mp3}
+
+
+def strip(path) -> bool:
+    """Remove the dnr record (in-file slot + any sidecar). True if anything was removed.
+
+    Use before sharing a file to avoid leaking the embedded transcript / summary / entities.
+    Content is unchanged (content_hash is invariant).
+    """
+    ext = Path(path).suffix.lower()
+    removed = False
+    fn = _STRIP.get(ext)
+    if fn is not None:
+        removed = fn(path) or removed
+    sp = sidecar_path(path)
+    if os.path.exists(sp):
+        os.remove(sp)
+        removed = True
+    return removed

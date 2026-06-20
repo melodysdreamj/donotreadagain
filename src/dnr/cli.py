@@ -115,6 +115,42 @@ def _cmd_query(args) -> int:
     return 0
 
 
+def _cmd_strip(args) -> int:
+    from . import embed
+
+    if embed.strip(args.file):
+        print(f"stripped dnr record from {args.file}")
+        return 0
+    print(f"no dnr record in {args.file}", file=sys.stderr)
+    return 1
+
+
+def _cmd_validate(args) -> int:
+    from . import embed, schema
+
+    rec = embed.extract(args.file)
+    if rec is None:
+        print("no dnr record")
+        return 1
+    errors = schema.validate(rec)
+    if errors:
+        print("invalid dnr record:")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+    print("valid dnr record (dnr-0.1)")
+    return 0
+
+
+def _cmd_schema(args) -> int:
+    import json
+
+    from . import schema
+
+    print(json.dumps(schema.SCHEMA, indent=2, ensure_ascii=False))
+    return 0
+
+
 def _cmd_init(args) -> int:
     import re
 
@@ -189,6 +225,16 @@ def _build_parser() -> argparse.ArgumentParser:
     pin = sub.add_parser("init", help="install the dnr agent skill into this repo + ensure a key")
     pin.add_argument("dir", nargs="?", default=".")
     pin.set_defaults(fn=_cmd_init)
+
+    ps = sub.add_parser("strip", help="remove the dnr record (in-file + sidecar) before sharing")
+    ps.add_argument("file")
+    ps.set_defaults(fn=_cmd_strip)
+
+    pval = sub.add_parser("validate", help="validate a file's record against the dnr-0.1 schema")
+    pval.add_argument("file")
+    pval.set_defaults(fn=_cmd_validate)
+
+    sub.add_parser("schema", help="print the dnr record JSON Schema").set_defaults(fn=_cmd_schema)
     return p
 
 

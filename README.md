@@ -2,7 +2,15 @@
 
 > **Read once, never again.** A spec + tool that embeds a faithful AI transcript into each expensive-to-parse file's own metadata, so AI agents stop re-parsing the same PDF / audio / video.
 
-**Status:** early design — building fundamentals-first. Full design → **[vision.md](vision.md)** · roadmap → **[MILESTONES.md](MILESTONES.md)**.
+**Status:** working v0.1 engine (PDF + audio, zero-API-key). Full design → **[vision.md](vision.md)** · spec → **[spec/dnr-0.1.md](spec/dnr-0.1.md)** · security → **[SECURITY.md](SECURITY.md)** · roadmap → **[MILESTONES.md](MILESTONES.md)**.
+
+```
+dnr ingest <file>     # transcribe once (local) → sign → embed
+dnr read <file>       # print the cached transcript (verified) or fall back
+dnr index <folder>    # build .dnr.db    dnr query <folder> --match "<text>"
+dnr init              # install the agent skill ("apply dnr")
+dnr strip <file>      # remove the record before sharing
+```
 
 ## The idea
 

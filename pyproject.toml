@@ -13,6 +13,7 @@ dependencies = [
   "pypdf",
   "rfc8785",
   "cryptography",
+  "jsonschema",
 ]
 
 [project.optional-dependencies]
