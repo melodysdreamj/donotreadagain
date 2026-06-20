@@ -190,6 +190,9 @@ A move (`mv`) leaves bytes unchanged → hashes unchanged → only the index `pa
 ### Recording (provenance)
 Stamp `method` + `transcriber` + `version` + `instruction_id` + `prompt_hash` so **"what method/model/instruction produced this verbatim"** is verifiable and reproducible. `method` alone tells you the trust level.
 
+### Who transcribes (dnr owns no model)
+dnr never bundles a transcription model — the transcript is an **input**. It comes from: (1) the **calling agent** itself (it is already a vision/multimodal LLM; the skill tells it to read the file under this contract and hand the text to `dnr record`); (2) a **local model** (Whisper for audio, text-extract for born-digital PDF, local OCR for scans); or (3) optionally a hosted API. The `method` / `transcriber` provenance records which. This keeps dnr dependency-light and is the natural extension of *"the AI is the runtime"* — the agent is also the transcriber.
+
 > Honest limit: verbatim drives *design-level loss (summarization)* to zero. *Extraction errors* (model hallucination, etc.) are surfaced via `method` + `confidence`, and high-stakes cases are reinforced with a verify mode.
 
 ---
@@ -287,7 +290,7 @@ SELECT path FROM dnr WHERE json_extract(fields,'$.start_date') > '2024-01-01';
 
 - **Consumption (read/query)** = already-present tools like `sqlite3` / `exiftool`. Zero dnr install.
 - **Production (transcribe/embed)** = `uvx donotreadagain ingest <file>` run on demand, once per file. No resident daemon, no mandatory MCP.
-- The only genuinely heavy code is **transcription**. Embed/index/read are thin glue over ubiquitous tools.
+- **dnr ships no transcription model.** The transcript is supplied by whoever is best placed: the **calling agent** (already a vision LLM — it reads the file and hands dnr the verbatim text), a **local model** (Whisper for audio, text-extract for born-digital PDFs, local OCR), or optionally an API. dnr's own code is just the deterministic glue (hash · embed · sign · index) over ubiquitous tools.
 - Discoverability: a copy-paste `AGENTS.md` stanza + `_dnr_readme` + a public spec URL.
 
 ---

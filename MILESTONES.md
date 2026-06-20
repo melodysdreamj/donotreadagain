@@ -44,14 +44,16 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] `transcript` always handled as untrusted data, never as instructions
 - **Done when:** forged / altered / untrusted-key records are correctly refused for skip-reparse.
 
-## ⬜ M4 — Transcription (ingest)
-> Turn a raw file into a faithful record, once.
-- [ ] Method hierarchy: `text-extract` → `vision` model → (`ocr` demoted)
-- [ ] **Verbatim** transcription contract (prompt): complete, no summary, mark uncertainty
-- [ ] provenance: method, transcriber, version, instruction_id, prompt_hash, confidence
-- [ ] Per-segment language tagging (feeds M6)
+## 🔜 M4 — Transcription (ingest)
+> Turn a raw file into a faithful record, once. **dnr owns no model** — the transcript is supplied by the agent or a local provider.
+- [x] **Transcriber-agnostic ingest pipeline** — content_hash → transcribe → record → sign → embed
+- [x] **Local `text-extract`** (pypdf, born-digital PDF, NFC) · **agent-supplied** path (`dnr record`)
+- [ ] Local models: **Whisper** (audio) · local OCR/vision (scans); optional hosted API
+- [ ] Method hierarchy enforced: `text-extract` → `vision` → (`ocr` demoted)
+- [ ] **Verbatim** transcription contract (prompt) shipped in the skill: complete, no summary, mark uncertainty
+- [ ] provenance: version, instruction_id, prompt_hash, confidence; per-segment language tagging (feeds M6)
 - [ ] Cost control: query-driven lazy ingest · ask-the-user · `dnr ingest --glob --budget`
-- **Done when:** a PDF / audio ingests into a verbatim, signed, embedded record with provenance.
+- **Done when:** a PDF / audio ingests into a verbatim, signed, embedded record with provenance — agent-supplied or local, no API key required.
 
 ## ⬜ M5 — Index (query layer)
 > A folder becomes a queryable table — cheaply, incrementally.
