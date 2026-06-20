@@ -10,7 +10,7 @@ via `uvx` (no install) or is read with ambient `sqlite3` / `exiftool`.
 from __future__ import annotations
 
 #: Canonical home — the skill + spec live here; agents fetch the skill from this repo.
-HOME_URL = "https://github.com/donotreadagain/donotreadagain"
+HOME_URL = "https://github.com/melodysdreamj/donotreadagain"
 SKILL_URL = f"{HOME_URL}/blob/main/SKILL.md"
 
 #: The one-line self-introduction embedded in every record. Pure pointer, not instructions.

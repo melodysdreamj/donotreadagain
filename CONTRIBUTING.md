@@ -5,7 +5,7 @@ Thanks for your interest! dnr is a small, principled codebase — a quick read o
 ## Getting started
 
 ```bash
-git clone https://github.com/donotreadagain/donotreadagain
+git clone https://github.com/melodysdreamj/donotreadagain
 cd donotreadagain
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"

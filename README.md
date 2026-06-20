@@ -112,7 +112,7 @@ See **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)*
 ## Development
 
 ```bash
-git clone https://github.com/donotreadagain/donotreadagain
+git clone https://github.com/melodysdreamj/donotreadagain
 cd donotreadagain
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
