@@ -3,9 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
-## [Unreleased] — 0.1.0
+## 0.1.1
 
-First public cut. Pre-release.
+### Fixed
+- `dnr --version` now reflects the installed package version (read from package metadata,
+  single source of truth) instead of a stale hard-coded string.
+
+## 0.1.0
+
+First public release.
 
 ### Added
 - **Read-once cache.** `dnr ingest` / `dnr record` transcribe a file once, sign the record (Ed25519),
