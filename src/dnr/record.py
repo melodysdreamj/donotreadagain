@@ -9,7 +9,7 @@ import hashlib
 
 import rfc8785
 
-from . import SPEC_VERSION
+from . import SPEC_VERSION, bootstrap
 
 
 def canonicalize(record: dict) -> bytes:
@@ -30,6 +30,7 @@ def new_record(*, content_hash: str, source: dict, transcript: dict | None = Non
     """Assemble a v0.1 record dict (unsigned). Sign with :mod:`dnr.signing`."""
     rec: dict = {
         "dnr": SPEC_VERSION,
+        "_about": bootstrap.ABOUT,  # one-line self-introduction so the file advertises itself
         "content_hash": content_hash,
         "source": source,
     }

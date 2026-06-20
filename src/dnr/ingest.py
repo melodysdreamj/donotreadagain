@@ -54,6 +54,9 @@ def make_record(path, transcript_text: str, provenance: dict, *,
 def _already_ours(path) -> dict | None:
     try:
         rec = _embed.extract(path)
+        if rec is None:
+            from . import index
+            rec = index.db_only_record(Path(path).parent, path)
         if rec is None or not signing.verify(rec, keyring.default_trust()):
             return None
         return rec if rec.get("content_hash") == hashing.content_hash(path) else None
@@ -61,28 +64,36 @@ def _already_ours(path) -> dict | None:
         return None
 
 
-def _sign_and_embed(path, rec: dict, *, sign: bool, sidecar: bool) -> dict:
+def _sign_and_store(path, rec: dict, *, sign: bool = True, no_embed: bool = False) -> dict:
+    """Sign, then store the record **in-file** if the type has a carrier, else as a **db-only**
+    record in the folder index. No sidecars. ``no_embed`` forces db-only even for a carrier type
+    (leaves the original byte-identical — use for evidentiary files you must not modify)."""
     if sign:
         priv, pub = keyring.default_keypair()
         rec = signing.sign(rec, priv, pub)
-    _embed.embed(path, rec, sidecar=sidecar)
+    if _embed.has_carrier(path) and not no_embed:
+        _embed.embed(path, rec)
+    else:
+        from . import index
+        index.put_record(Path(path).parent, path, rec)
     return rec
 
 
 def ingest(path, transcriber: str | None = None, *, sign: bool = True,
-           sidecar: bool = False, force: bool = False) -> dict:
-    """Transcribe with a local provider (auto-selected by type), then record + sign + embed.
+           no_embed: bool = False, force: bool = False) -> dict | None:
+    """Transcribe with a local provider (auto-selected by type), then record + sign + store.
 
-    Idempotent: skips if our own valid record already matches the file's content (the
-    producer gate that prevents re-ingest churn) unless ``force``.
+    Already-readable text (.txt/.md/.csv/…) needs no transcription and **no record at all** —
+    returns ``None`` (an agent just reads the file directly). Idempotent otherwise: skips if our
+    own valid record already matches the file's content unless ``force``.
     """
+    ext = Path(path).suffix.lower()
+    if transcriber is None and ext in TEXT_EXTS:
+        return None  # already text — no transcription, no record; read it directly
     if not force:
         existing = _already_ours(path)
         if existing is not None:
             return existing
-    ext = Path(path).suffix.lower()
-    if transcriber is None and ext in TEXT_EXTS:
-        return _ingest_text(path, sign=sign)
     if transcriber is None:
         transcriber = DEFAULT_PROVIDER.get(ext)
     if transcriber is None:
@@ -95,28 +106,91 @@ def ingest(path, transcriber: str | None = None, *, sign: bool = True,
     prov = {"method": res.method, "transcriber": res.transcriber}
     if res.confidence is not None:
         prov["confidence"] = res.confidence
-    rec = make_record(path, res.text, prov, lang=res.lang, segments=res.segments)
-    return _sign_and_embed(path, rec, sign=sign, sidecar=sidecar)
-
-
-def _ingest_text(path, *, sign: bool = True) -> dict:
-    """Text files need no transcription (method=none); store a sidecar record."""
-    import unicodedata
-
-    text = unicodedata.normalize("NFC", Path(path).read_text(encoding="utf-8", errors="replace"))
-    rec = make_record(path, text, {"method": "none", "transcriber": "none"})
-    return _sign_and_embed(path, rec, sign=sign, sidecar=True)
+    rec = make_record(path, res.text, prov, lang=res.lang or transcribe.detect_lang(res.text),
+                      segments=res.segments)
+    return _sign_and_store(path, rec, sign=sign, no_embed=no_embed)
 
 
 def record_supplied(path, transcript_text: str, method: str = "vision",
                     transcriber: str = "agent", *, lang: str | None = None,
-                    segments: list | None = None, sign: bool = True,
-                    sidecar: bool = False, follows_guide: bool = True) -> dict:
+                    segments: list | None = None, tags: list | None = None,
+                    fields: dict | None = None, sign: bool = True,
+                    no_embed: bool = False, follows_guide: bool = True) -> dict:
     """Record a transcript produced by the agent following the verbatim guide."""
     prov = (guide.provenance_stamp(method, transcriber)
             if follows_guide else {"method": method, "transcriber": transcriber})
-    rec = make_record(path, transcript_text, prov, lang=lang, segments=segments)
-    return _sign_and_embed(path, rec, sign=sign, sidecar=sidecar)
+    fields = dict(fields or {})
+    if tags:
+        fields["tags"] = list(tags)
+    rec = make_record(path, transcript_text, prov,
+                      lang=lang or transcribe.detect_lang(transcript_text),
+                      segments=segments, fields=fields or None)
+    return _sign_and_store(path, rec, sign=sign, no_embed=no_embed)
+
+
+def current_tags(path) -> list:
+    """The tags currently on a file's record ([] if none / no record)."""
+    return list((_read_record(path) or {}).get("fields", {}).get("tags") or [])
+
+
+def _read_record(path) -> dict | None:
+    rec = _embed.extract(path)
+    if rec is None:
+        from . import index
+        rec = index.db_only_record(Path(path).parent, path)
+    return rec
+
+
+def _edit_fields(path, mutate) -> dict:
+    """Load a file's record (creating a db-only one for text), apply ``mutate(fields)``, re-sign,
+    re-store, and refresh the index immediately. dnr never *guesses* metadata — callers set it."""
+    import unicodedata
+
+    rec = _read_record(path)
+    if rec is None:
+        if Path(path).suffix.lower() in TEXT_EXTS:
+            text = unicodedata.normalize("NFC", Path(path).read_text(encoding="utf-8", errors="replace"))
+            rec = make_record(path, text, {"method": "none", "transcriber": "none"},
+                              lang=transcribe.detect_lang(text))
+        else:
+            raise ValueError(f"{path} has no dnr record yet — ingest or record it first")
+    fields = rec.setdefault("fields", {})
+    mutate(fields)
+    _sign_and_store(path, rec)
+    if _embed.has_carrier(path):
+        from . import index
+        index.reindex_file(Path(path).parent, path)
+    return fields
+
+
+def set_tags(path, add: list | None = None, remove: list | None = None) -> list:
+    """Add/remove tags on a file's record (explicit — dnr does not auto-tag)."""
+    def _m(fields):
+        tags = list(fields.get("tags") or [])
+        for t in (remove or []):
+            if t in tags:
+                tags.remove(t)
+        for t in (add or []):
+            if t not in tags:
+                tags.append(t)
+        fields["tags"] = tags
+    return _edit_fields(path, _m).get("tags") or []
+
+
+def current_date(path) -> str | None:
+    return (_read_record(path) or {}).get("fields", {}).get("start_date")
+
+
+def set_date(path, date: str | None) -> str | None:
+    """Set (or clear, with ``None``) a file's `start_date` **explicitly**. dnr never infers dates —
+    they're optional; add one only when you need `--since/--until/--sort date` to apply to this file."""
+    def _m(fields):
+        if date:
+            fields["start_date"] = date
+        else:
+            fields.pop("start_date", None)
+    _edit_fields(path, _m)
+    return date
 
 
 def read_cached(path, trust: dict | None = None) -> str | None:
@@ -127,6 +201,9 @@ def read_cached(path, trust: dict | None = None) -> str | None:
     """
     try:
         rec = _embed.extract(path)
+        if rec is None:  # no in-file carrier? try a db-only record in the folder index
+            from . import index
+            rec = index.db_only_record(Path(path).parent, path)
         if rec is None:
             return None
         trust = keyring.default_trust() if trust is None else trust

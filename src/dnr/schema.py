@@ -13,6 +13,7 @@ SCHEMA: dict = {
     "required": ["dnr", "content_hash", "source"],
     "properties": {
         "dnr": {"type": "string", "const": "0.1"},
+        "_about": {"type": "string", "description": "self-describing pointer to the skill/spec; informational"},
         "content_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "source": {
             "type": "object",

@@ -25,6 +25,50 @@ class TranscriptResult:
     segments: list | None = field(default=None)
 
 
+def detect_lang(text: str | None) -> str | None:
+    """Cheap, deterministic, dependency-free script heuristic (ko / zh / ja / en)."""
+    if not text:
+        return None
+    han = cjk = kana = latin = 0
+    for c in text:
+        o = ord(c)
+        if 0xAC00 <= o <= 0xD7A3 or 0x1100 <= o <= 0x11FF:
+            han += 1
+        elif 0x3040 <= o <= 0x30FF:
+            kana += 1
+        elif 0x4E00 <= o <= 0x9FFF:
+            cjk += 1
+        elif c.isascii() and c.isalpha():
+            latin += 1
+    if han and han >= cjk:
+        return "ko"
+    if kana:
+        return "ja"
+    if cjk:
+        return "zh"
+    if latin:
+        return "en"
+    return None
+
+
+def is_low_quality(text: str | None) -> bool:
+    """Cheap heuristic: is this transcript empty or **garbled** (e.g. EUC-KR/CP949 decoded as
+    Latin-1 → mojibake)? We don't try to *fix* it — that's the vision/`dnr record` path's job;
+    we just flag it so it isn't silently trusted."""
+    if not text or len(text.strip()) < 3:
+        return True
+    s = text.strip()
+    ok_ascii = " \t\n\r.,;:!?()[]{}'\"/\\-–—…%₩$+*=&@#·"
+    readable = 0
+    for c in s:
+        o = ord(c)
+        if 0xAC00 <= o <= 0xD7A3 or 0x4E00 <= o <= 0x9FFF or 0x3040 <= o <= 0x30FF:  # Hangul / CJK / kana
+            readable += 1
+        elif c.isascii() and (c.isalnum() or c in ok_ascii):
+            readable += 1
+    return readable / len(s) < 0.55  # mostly unreadable bytes -> mojibake / garbage
+
+
 def text_extract(path) -> TranscriptResult:
     """Born-digital PDF -> embedded text layer, NFC-normalized. Lossless, no model."""
     from pypdf import PdfReader

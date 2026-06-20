@@ -1,50 +1,53 @@
-"""Supported file types -> transcription method + record carrier (M2 / M4).
+"""Supported file types -> transcription method + record storage (M2 / M4).
 
-`status`: implemented | partial | planned.  Value tuple = (modality, method, carrier, status).
+`storage`: where the record lives — **in-file** (a native metadata slot; portable, travels with
+the file) or **db-only** (in the folder's `.dnr.db`; for types with no in-file carrier, or via
+`--no-embed`). There are **no sidecar files**.
+`status`: implemented | partial | planned.  Value tuple = (modality, method, storage, status).
 """
 from __future__ import annotations
 
 SUPPORTED: dict[str, tuple[str, str, str, str]] = {
     # --- documents (visual / layout) ---
-    ".pdf":  ("document",    "text-extract (text layer) / vision (scan)", "XMP",         "partial"),
-    ".docx": ("document",    "text-extract (python-docx, local)",         "sidecar",     "implemented"),
-    ".pptx": ("document",    "text-extract + vision",                     "OOXML part",  "planned"),
-    ".xlsx": ("spreadsheet", "table-extract -> summary+schema",           "OOXML part",  "planned"),
-    ".html": ("document",    "text-extract",                              "sidecar",     "planned"),
-    ".rtf":  ("document",    "text-extract",                              "sidecar",     "planned"),
-    ".epub": ("document",    "text-extract",                              "sidecar",     "planned"),
-    # --- images ---
-    ".jpg":  ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
-    ".jpeg": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
-    ".png":  ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
-    ".tiff": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
-    ".webp": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
-    ".heic": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "planned"),
+    ".pdf":  ("document",    "text-extract (text layer) / vision (scan)", "XMP (in-file)",   "partial"),
+    ".docx": ("document",    "text-extract (python-docx, local)",         "db-only",         "implemented"),
+    ".pptx": ("document",    "text-extract + vision",                     "db-only",         "planned"),
+    ".xlsx": ("spreadsheet", "table-extract -> summary+schema",           "db-only",         "planned"),
+    ".html": ("document",    "text-extract",                              "db-only",         "planned"),
+    ".rtf":  ("document",    "text-extract",                              "db-only",         "planned"),
+    ".epub": ("document",    "text-extract",                              "db-only",         "planned"),
+    # --- images (record embedded in-file; pixels untouched, content_hash invariant) ---
+    ".jpg":  ("image",       "vision (agent, via `dnr record`)",          "JPEG APP (in-file)", "implemented"),
+    ".jpeg": ("image",       "vision (agent, via `dnr record`)",          "JPEG APP (in-file)", "implemented"),
+    ".png":  ("image",       "vision (agent, via `dnr record`)",          "PNG iTXt (in-file)", "implemented"),
+    ".tiff": ("image",       "vision (agent, via `dnr record`)",          "db-only",         "partial"),
+    ".webp": ("image",       "vision (agent, via `dnr record`)",          "db-only",         "partial"),
+    ".heic": ("image",       "vision (agent, via `dnr record`)",          "db-only",         "planned"),
     # --- audio ---
-    ".mp3":  ("audio",       "asr (Whisper, local)",                      "ID3 TXXX",    "partial"),
-    ".wav":  ("audio",       "asr (Whisper, local)",                      "sidecar",     "partial"),
-    ".flac": ("audio",       "asr (Whisper, local)",                      "Vorbis",      "planned"),
-    ".ogg":  ("audio",       "asr (Whisper, local)",                      "Vorbis",      "planned"),
-    ".opus": ("audio",       "asr (Whisper, local)",                      "Vorbis",      "planned"),
-    ".m4a":  ("audio",       "asr (Whisper, local)",                      "MP4 atom",    "planned"),
+    ".mp3":  ("audio",       "asr (Whisper, local)",                      "ID3 TXXX (in-file)", "partial"),
+    ".wav":  ("audio",       "asr (Whisper, local)",                      "db-only",         "partial"),
+    ".flac": ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
+    ".ogg":  ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
+    ".opus": ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
+    ".m4a":  ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
     # --- video ---
-    ".mp4":  ("video",       "asr (audio) + vision (keyframes)",          "XMP",         "planned"),
-    ".mov":  ("video",       "asr (audio) + vision (keyframes)",          "XMP",         "planned"),
-    ".mkv":  ("video",       "asr (audio) + vision (keyframes)",          "sidecar",     "planned"),
-    ".webm": ("video",       "asr (audio) + vision (keyframes)",          "sidecar",     "planned"),
-    # --- already-text: no transcription (method=none); stored as a sidecar ---
-    ".txt":  ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
-    ".md":   ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
-    ".json": ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
-    ".csv":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
-    ".tsv":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
-    ".log":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
+    ".mp4":  ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),
+    ".mov":  ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),
+    ".mkv":  ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),
+    ".webm": ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),
+    # --- already-readable text: no transcription, no record (an agent reads it directly) ---
+    ".txt":  ("text",        "none (no transcription needed)",            "none (read directly)", "n/a"),
+    ".md":   ("text",        "none (no transcription needed)",            "none (read directly)", "n/a"),
+    ".json": ("text",        "none (no transcription needed)",            "none (read directly)", "n/a"),
+    ".csv":  ("text",        "none (large -> summary+schema: planned)",   "none (read directly)", "n/a"),
+    ".tsv":  ("text",        "none (large -> summary+schema: planned)",   "none (read directly)", "n/a"),
+    ".log":  ("text",        "none (large -> summary+schema: planned)",   "none (read directly)", "n/a"),
 }
 
 
 def render() -> str:
-    head = f"{'ext':7} {'modality':11} {'method':42} {'carrier':18} status"
+    head = f"{'ext':7} {'modality':11} {'method':42} {'storage':20} status"
     lines = [head, "-" * len(head)]
-    for ext, (mod, method, carrier, status) in SUPPORTED.items():
-        lines.append(f"{ext:7} {mod:11} {method:42} {carrier:18} {status}")
+    for ext, (mod, method, storage, status) in SUPPORTED.items():
+        lines.append(f"{ext:7} {mod:11} {method:42} {storage:20} {status}")
     return "\n".join(lines)

@@ -23,13 +23,23 @@ def _cmd_keygen(args) -> int:
 def _cmd_ingest(args) -> int:
     from . import ingest
 
-    rec = ingest.ingest(args.file, transcriber=args.transcriber, sidecar=args.sidecar, force=args.force)
+    rec = ingest.ingest(args.file, transcriber=args.transcriber, no_embed=args.no_embed, force=args.force)
+    if rec is None:
+        print(f"{args.file}: already-readable text — no transcription or record needed (read it directly)")
+        return 0
     p = rec["provenance"]
-    print(f"ingested {args.file}")
+    from . import embed, transcribe
+    where = "in-file" if embed.has_carrier(args.file) and not args.no_embed else "db-only (index)"
+    print(f"ingested {args.file}  [{where}]")
     print(f"  method={p['method']} transcriber={p['transcriber']}")
     print(f"  {rec['content_hash']}")
     if "sig" in rec:
         print(f"  signed key_id={rec['sig']['key_id']}")
+    txt = (rec.get("transcript") or {}).get("text") or ""
+    if transcribe.is_low_quality(txt):
+        print(f"  [dnr] warning: extracted text is thin/garbled ({len(txt)} chars) — likely a scan or bad "
+              f"encoding. Redo via vision: `dnr record {args.file} --transcript-file <t.md> --method vision "
+              f"--transcriber <your-model>`", file=sys.stderr)
     return 0
 
 
@@ -40,9 +50,12 @@ def _cmd_record(args) -> int:
     if text is None:
         print("dnr record: provide --transcript or --transcript-file", file=sys.stderr)
         return 2
+    tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else None
     rec = ingest.record_supplied(args.file, text, args.method, args.transcriber,
-                                 lang=args.lang, sidecar=args.sidecar)
-    print(f"recorded {args.file}: method={args.method} {rec['content_hash']}")
+                                 lang=args.lang, tags=tags, no_embed=args.no_embed)
+    from . import embed
+    where = "in-file" if embed.has_carrier(args.file) and not args.no_embed else "db-only (index)"
+    print(f"recorded {args.file}: method={args.method} [{where}] {rec['content_hash']}")
     return 0
 
 
@@ -53,6 +66,10 @@ def _cmd_read(args) -> int:
     if text is None:
         print(f"[dnr] no valid cached record for {args.file} — read it normally", file=sys.stderr)
         return 0
+    from . import transcribe
+    if transcribe.is_low_quality(text):
+        print(f"[dnr] note: this transcript looks low-quality (empty/mojibake) — consider redoing it "
+              f"via vision: `dnr record {args.file} ...`", file=sys.stderr)
     sys.stdout.write(text)
     if not text.endswith("\n"):
         sys.stdout.write("\n")
@@ -60,9 +77,15 @@ def _cmd_read(args) -> int:
 
 
 def _cmd_verify(args) -> int:
-    from . import embed, hashing, keyring, signing
+    from pathlib import Path
+
+    from . import embed, hashing, index, keyring, signing
 
     rec = embed.extract(args.file)
+    where = "in-file"
+    if rec is None:  # not in the file? check for a db-only record in the folder index
+        rec = index.db_only_record(Path(args.file).parent, args.file)
+        where = "db-only"
     if rec is None:
         print("no dnr record")
         return 1
@@ -71,7 +94,7 @@ def _cmd_verify(args) -> int:
         match = rec.get("content_hash") == hashing.content_hash(args.file)
     except ValueError:
         match = None
-    print(f"record: yes · signed&trusted: {trusted} · content_hash match: {match}")
+    print(f"record: yes ({where}) · signed&trusted: {trusted} · content_hash match: {match}")
     return 0 if (trusted and match) else 1
 
 
@@ -101,37 +124,185 @@ def _cmd_index(args) -> int:
 
 
 def _cmd_query(args) -> int:
+    import os
+
     from . import index
 
-    if args.list:
-        rows = index.list_all(args.folder)
+    if os.path.isfile(args.folder):
+        print(f"[dnr] '{args.folder}' is a file — `dnr query` takes a folder; for one file use `dnr read`.",
+              file=sys.stderr)
+        return 2
+
+    if args.use:  # reuse a saved query expression (live re-run)
+        expr = index.get_query(args.folder, args.use)
+        if expr is None:
+            print(f"[dnr] no saved query '{args.use}'", file=sys.stderr)
+            return 1
+    else:
+        tags = [t.strip() for t in args.tag.split(",") if t.strip()] if args.tag else []
+        anys = [t.strip() for t in args.any.split(",") if t.strip()] if args.any else []
+        expr = {"match": args.match, "any": anys, "tags": tags, "since": args.since, "until": args.until,
+                "where": args.where, "sort": args.sort, "desc": args.desc,
+                "dedup": args.dedup, "min_chars": args.min_chars}
+
+    fmt = args.format or "plain"
+    sort_col = "start_date" if expr.get("sort") in ("date", "start_date") else expr.get("sort")
+
+    def _emit(rows):
+        if fmt == "json":
+            import json as _j
+            cols = ("path", "start_date", "method", "title", "tags", "content_hash")
+            print(_j.dumps([{k: r.get(k) for k in cols} for r in rows], ensure_ascii=False, indent=2))
+            return
         for r in rows:
-            print(f"{r['path']}\t{r.get('method') or ''}\t{r.get('title') or ''}".rstrip())
-        if not rows:
-            print("[dnr] index is empty (run `dnr index <folder>`)", file=sys.stderr)
+            if fmt == "paths":
+                print(r["path"])
+                continue
+            prefix = f"{(r.get(sort_col) if r.get(sort_col) is not None else '—'):<12}\t" if sort_col else ""
+            print((prefix + r["path"] + (f"\t{r['title']}" if r.get("title") else "")).rstrip())
+
+    composed = (expr.get("any") or expr.get("tags") or expr.get("since") or expr.get("until")
+                or expr.get("where") or expr.get("dedup") or expr.get("min_chars"))
+    has_filter = expr.get("match") or composed
+
+    if expr.get("match") and args.context is not None and not composed:  # KWIC
+        results = index.search_context(args.folder, expr["match"], radius=args.context)
+        for path, snips in results:
+            print(path)
+            for s in snips:
+                print(f"    … {s}")
+        rows = [{"path": p} for p, _ in results]
+    elif not has_filter and (args.list or args.use):  # inventory
+        rows = index.list_all(args.folder, sort=expr.get("sort") or "path", desc=expr.get("desc"))
+        _emit(rows)
+    elif has_filter:  # composed: match ∩ tag ∩ time ∩ where
+        rows = index.query_compose(
+            args.folder, match=expr.get("match"), any_terms=expr.get("any"), tags=expr.get("tags"),
+            since=expr.get("since"), until=expr.get("until"), where=expr.get("where"),
+            sort=expr.get("sort"), desc=expr.get("desc"), dedup=expr.get("dedup"),
+            min_chars=expr.get("min_chars"))
+        _emit(rows)
+    else:
+        print("dnr query: --match/--tag/--since/--until/--where [--context N] [--dedup] [--format json],"
+              " --list, or --use LABEL", file=sys.stderr)
+        return 2
+
+    hits = len(rows)
+    if not hits:
+        print("[dnr] no rows match", file=sys.stderr)
+    # honesty about optional dates
+    if sort_col == "start_date" and hits and all(r.get("start_date") is None for r in rows):
+        print("[dnr] note: none of these have a start_date — `--sort date` had no effect "
+              "(dates are optional; add one with `dnr date <file> <YYYY-MM-DD>`)", file=sys.stderr)
+    if (expr.get("since") or expr.get("until")) and not hits:
+        print("[dnr] note: --since/--until only match files that have a start_date (optional, none auto-set)",
+              file=sys.stderr)
+    if args.save:
+        index.save_query(args.folder, args.save, expr)
+        warn = " — warning: 0 hits (empty view)" if hits == 0 else ""
+        print(f"[dnr] saved query '{args.save}'{warn}", file=sys.stderr)
+    if args.use:
+        index.log_query_run(args.folder, args.use, hits)
+    return 0
+
+
+def _cmd_date(args) -> int:
+    from . import ingest
+
+    if args.date is None and not args.clear:
+        cur = ingest.current_date(args.file)
+        print(cur if cur else "(no date)")
         return 0
-    if args.match:
-        hits = index.query_match(args.folder, args.match)
-        for p in hits:
-            print(p)
-        if not hits:
-            print(f"[dnr] no matches for {args.match!r}", file=sys.stderr)
+    d = ingest.set_date(args.file, None if args.clear else args.date)
+    print(f"start_date: {d or '(cleared)'}")
+    return 0
+
+
+def _cmd_tag(args) -> int:
+    from . import ingest
+
+    add = list(args.tags or [])
+    remove = [t.strip() for t in args.rm.split(",") if t.strip()] if args.rm else []
+    if not add and not remove:
+        cur = ingest.current_tags(args.file)
+        print(" ".join(cur) if cur else "(no tags)")
         return 0
-    if args.where:
-        rows = index.query_where(args.folder, args.where)
-        for r in rows:
-            print(r["path"] + (f"\t{r['title']}" if r.get("title") else ""))
-        if not rows:
-            print("[dnr] no rows match", file=sys.stderr)
+    tags = ingest.set_tags(args.file, add=add, remove=remove)
+    print(f"tags: {' '.join(tags) if tags else '(none)'}")
+    return 0
+
+
+def _cmd_queries(args) -> int:
+    import json
+
+    from . import index
+
+    rows = index.list_queries(args.folder)
+    if not rows:
+        print("[dnr] no saved queries", file=sys.stderr)
         return 0
-    print("dnr query: provide --match TEXT, --where SQL, or --list", file=sys.stderr)
-    return 2
+    for r in rows:
+        e = json.loads(r["expr"])
+        parts = []
+        for k in ("match", "since", "until", "where", "sort"):
+            if e.get(k):
+                parts.append(f"{k}:{e[k]}")
+        if e.get("tags"):
+            parts.append("tags:" + ",".join(e["tags"]))
+        print(f"{r['label']}\t{' '.join(parts)}\t(runs:{r['run_count']}, last_hits:{r['last_hits']})")
+    return 0
+
+
+def _cmd_status(args) -> int:
+    from . import index
+
+    c = index.coverage(args.folder)
+    if c["total"] == 0:
+        print(f"{args.folder}: no supported files found")
+        return 0
+    print(f"{args.folder}: {c['recorded']}/{c['total']} files have a cached transcript "
+          f"({c['pending']} pending)")
+    labels = {"model": "images/audio/video (need a model each view)",
+              "parse": "PDF/Office (expensive to re-parse)",
+              "cheap": "text (no transcription needed)"}
+    for kind in ("model", "parse", "cheap"):
+        total, rec = c["by_kind"][kind]
+        if total:
+            print(f"  {labels[kind]:42} {rec}/{total} transcribed")
+    lq = index.low_quality_records(args.folder)
+    if lq:
+        print(f"  {'low-quality transcripts (empty/mojibake)':42} {len(lq)} — redo via `dnr record` (vision)")
+    if args.pending:
+        pend = [p for p in c["pending_list"] if p["kind"] != "cheap"]
+        if not pend and not lq:
+            print("\nnothing pending.")
+        if pend:
+            print(f"\npending transcription ({len(pend)}):")
+            for p in pend:
+                print(f"  [{p['kind']}] {p['path']}")
+        if lq:
+            print(f"\nlow-quality — redo via vision ({len(lq)}):")
+            for p in lq:
+                print(f"  [low-quality] {p}")
+        return 0
+    if c["should_offer_transcribe"]:
+        print()
+        print(f"transcribe-first recommended: {c['pending_model']} model-only + "
+              f"{c['pending_parse']} parse-heavy files un-transcribed (`dnr status <folder> --pending` to list).")
+        print("Doing it once makes this and every future query a cache hit "
+              "(audio/scans only searchable after). Then:")
+        print("  dnr ingest <born-digital> · dnr record <image/audio/video> · dnr index <folder>")
+    return 0
 
 
 def _cmd_strip(args) -> int:
-    from . import embed
+    from pathlib import Path
 
-    if embed.strip(args.file):
+    from . import embed, index
+
+    removed = embed.strip(args.file)  # in-file carrier (+ any legacy sidecar)
+    removed = index.remove_record(Path(args.file).parent, args.file) or removed  # db-only record
+    if removed:
         print(f"stripped dnr record from {args.file}")
         return 0
     print(f"no dnr record in {args.file}", file=sys.stderr)
@@ -165,28 +336,21 @@ def _cmd_schema(args) -> int:
 
 
 def _cmd_init(args) -> int:
-    import re
+    from . import bootstrap, keyring, signing
 
-    from . import keyring, signing, skill
+    _, pub = keyring.default_keypair()  # ensure a signing key exists
+    print(f"dnr ready · signing key_id={signing.key_id(pub)}")
+    print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
+    print(f"agents fetch the skill once from {bootstrap.SKILL_URL}  (or run `dnr skill`).")
+    return 0
 
-    target = Path(args.dir)
-    target.mkdir(parents=True, exist_ok=True)
-    block = skill.stanza()
-    candidates = [target / "AGENTS.md", target / "CLAUDE.md"]
-    surfaces = [c for c in candidates if c.exists()] or [target / "AGENTS.md"]
-    for f in surfaces:
-        text = f.read_text(encoding="utf-8") if f.exists() else ""
-        if skill.BEGIN in text and skill.END in text:
-            pat = re.escape(skill.BEGIN) + r".*?" + re.escape(skill.END)
-            new = re.sub(pat, lambda _m: block, text, flags=re.S)
-        else:
-            sep = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-            new = f"{text}{sep}{block}\n"
-        f.write_text(new, encoding="utf-8")
-    _, pub = keyring.default_keypair()
-    print(f"dnr initialized in {target}: skill -> {', '.join(s.name for s in surfaces)}; "
-          f"signing key_id={signing.key_id(pub)}")
-    print('tell your agent: "apply dnr" (it will read the stanza).')
+
+def _cmd_skill(args) -> int:
+    from . import skill
+
+    sys.stdout.write(skill.skill_md())
+    if not skill.skill_md().endswith("\n"):
+        sys.stdout.write("\n")
     return 0
 
 
@@ -200,7 +364,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pi = sub.add_parser("ingest", help="transcribe (local, auto by type) + record + sign + embed")
     pi.add_argument("file")
     pi.add_argument("--transcriber", default=None, help="override the local provider (text-extract, whisper)")
-    pi.add_argument("--sidecar", action="store_true")
+    pi.add_argument("--no-embed", action="store_true",
+                    help="store db-only (leave the original byte-identical; for evidentiary files)")
     pi.add_argument("--force", action="store_true", help="re-ingest even if a valid record exists")
     pi.set_defaults(fn=_cmd_ingest)
 
@@ -211,7 +376,9 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--method", default="vision")
     pr.add_argument("--transcriber", default="agent")
     pr.add_argument("--lang")
-    pr.add_argument("--sidecar", action="store_true")
+    pr.add_argument("--tags", help="comma-separated tags")
+    pr.add_argument("--no-embed", action="store_true",
+                    help="store db-only (leave the original byte-identical; for evidentiary files)")
     pr.set_defaults(fn=_cmd_record)
 
     prd = sub.add_parser("read", help="print the cached transcript if trusted, else fall back")
@@ -225,20 +392,54 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("guide", help="print the verbatim transcription guide (for the agent)").set_defaults(fn=_cmd_guide)
     sub.add_parser("types", help="list supported file types + transcription methods").set_defaults(fn=_cmd_types)
 
+    pst = sub.add_parser("status", help="folder transcription coverage + transcribe-first recommendation")
+    pst.add_argument("folder")
+    pst.add_argument("--pending", action="store_true", help="list the files still needing transcription")
+    pst.set_defaults(fn=_cmd_status)
+
+    pd = sub.add_parser("date", help="show/set/clear a file's start_date (optional; dnr never infers it)")
+    pd.add_argument("file")
+    pd.add_argument("date", nargs="?", help="YYYY-MM-DD (omit to show current)")
+    pd.add_argument("--clear", action="store_true", help="remove the start_date")
+    pd.set_defaults(fn=_cmd_date)
+
     pix = sub.add_parser("index", help="harvest a folder's records into .dnr.db")
     pix.add_argument("folder")
     pix.set_defaults(fn=_cmd_index)
 
     pq = sub.add_parser("query", help="query a folder's index")
     pq.add_argument("folder")
-    pq.add_argument("--match", help="full-text search (FTS5 trigram; terms 3+ chars)")
+    pq.add_argument("--match", help="full-text search (FTS5 trigram; <3-char terms via substring)")
+    pq.add_argument("--any", help="match ANY of these terms (comma-separated OR; e.g. 가압류,보전,집행)")
+    pq.add_argument("--context", nargs="?", const=200, type=int, metavar="N",
+                    help="with --match: show ±N chars around each hit (default 200)")
+    pq.add_argument("--tag", help="tag(s) the file must have; comma-separated = AND (e.g. 가압류,2025)")
+    pq.add_argument("--since", help="start_date >= (e.g. 2025-01-01)")
+    pq.add_argument("--until", help="start_date <= (e.g. 2026-06-30)")
     pq.add_argument("--where", help="SQL WHERE over the fixed columns")
     pq.add_argument("--list", action="store_true", help="list every indexed record")
+    pq.add_argument("--sort", help="sort by: path|mtime|indexed_at|bytes|title|date")
+    pq.add_argument("--desc", action="store_true", help="descending sort")
+    pq.add_argument("--dedup", action="store_true", help="collapse identical-content files (content_hash)")
+    pq.add_argument("--min-chars", type=int, metavar="N", dest="min_chars",
+                    help="drop near-empty transcripts (< N chars)")
+    pq.add_argument("--format", choices=["plain", "paths", "json"], help="output format (default plain)")
+    pq.add_argument("--save", metavar="LABEL", help="save this composed query for reuse")
+    pq.add_argument("--use", metavar="LABEL", help="re-run a saved query (live)")
     pq.set_defaults(fn=_cmd_query)
 
-    pin = sub.add_parser("init", help="install the dnr agent skill into this repo + ensure a key")
-    pin.add_argument("dir", nargs="?", default=".")
-    pin.set_defaults(fn=_cmd_init)
+    pqs = sub.add_parser("queries", help="list saved queries for a folder")
+    pqs.add_argument("folder")
+    pqs.set_defaults(fn=_cmd_queries)
+
+    ptg = sub.add_parser("tag", help="show/add/remove a file's tags (e.g. dnr tag f.pdf 가압류 면탈)")
+    ptg.add_argument("file")
+    ptg.add_argument("tags", nargs="*", help="tags to add (no args = show current)")
+    ptg.add_argument("--rm", help="comma-separated tags to remove")
+    ptg.set_defaults(fn=_cmd_tag)
+
+    sub.add_parser("init", help="ensure a signing key + show where agents fetch the skill").set_defaults(fn=_cmd_init)
+    sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 
     ps = sub.add_parser("strip", help="remove the dnr record (in-file + sidecar) before sharing")
     ps.add_argument("file")
