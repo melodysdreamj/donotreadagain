@@ -2,7 +2,7 @@
 
 > **Read once, never again.** Embed a faithful, signed AI transcript into each expensive-to-parse file's own metadata, so AI agents stop re-OCR/re-parsing the same PDF, image, scan, or audio every time.
 
-[![tests](https://img.shields.io/badge/tests-passing-brightgreen)](#development) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml) · **status:** v0.1, pre-release
+[![ci](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml/badge.svg)](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/donotreadagain)](https://pypi.org/project/donotreadagain/) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml)
 
 ---
 
