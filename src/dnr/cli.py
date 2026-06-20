@@ -115,8 +115,7 @@ def _cmd_query(args) -> int:
         for p in hits:
             print(p)
         if not hits:
-            hint = " — terms under 3 chars can't match the trigram index" if len(args.match.strip()) < 3 else ""
-            print(f"[dnr] no matches for {args.match!r}{hint}", file=sys.stderr)
+            print(f"[dnr] no matches for {args.match!r}", file=sys.stderr)
         return 0
     if args.where:
         rows = index.query_where(args.folder, args.where)

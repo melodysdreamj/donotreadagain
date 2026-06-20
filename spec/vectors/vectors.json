@@ -1,0 +1,10 @@
+{
+  "sample.txt": {
+    "profile": "dnr-text-1",
+    "content_hash": "sha256:7609789be0a7f7d9c9df5883ff4d4b19af92cb4e7a74ab855e8fbbd40fb5eefc"
+  },
+  "sample.wav": {
+    "profile": "dnr-audio-1",
+    "content_hash": "sha256:665b760d3b556adfffd78e5798669449f7689759862fa1d02af6524d359c3bd3"
+  }
+}

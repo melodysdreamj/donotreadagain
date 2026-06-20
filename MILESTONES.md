@@ -6,7 +6,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 **Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8 → M9. &nbsp; **v0.1 cut** = M1–M8 (build) + **M9 (dogfood — the real release-readiness gate)**. &nbsp; **M10–M14** = operability, security, the standard, scale, release.
 
-**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **57 tests green.** **M1–M12 landed.** Then a **broad multi-user dogfood** (11 personas, each in an isolated folder) found 2 ship-blockers the targeted run missed — **both now fixed**: (1) the **index/query trusted UNSIGNED records** (security bypass — `read`/`verify` refused forged records but `query` surfaced them); `scan` now verifies signature + content_hash before harvesting. (2) **duplicate-content PRIMARY-KEY collision** silently dropped a file; rows are now keyed by **path**. Also added `query --list`, "no results"/CJK-short-term hints, and stripped-record removal from the index. **Known high backlog from the dogfood (not yet fixed):** non-PDF `ingest` routing (.txt→pypdf crash; `dnr types` over-claims), CJK <3-char FTS (trigram limit — breaks 2-char Korean legal terms), and `content_hash` PDF profile not reproducible from the spec (undocumented `<CS>`/`<IM>` framing; no golden vectors). Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
+**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **57 tests green.** **M1–M12 landed.** Then a **broad multi-user dogfood** (11 personas, each in an isolated folder) found 2 ship-blockers the targeted run missed — **both now fixed**: (1) the **index/query trusted UNSIGNED records** (security bypass — `read`/`verify` refused forged records but `query` surfaced them); `scan` now verifies signature + content_hash before harvesting. (2) **duplicate-content PRIMARY-KEY collision** silently dropped a file; rows are now keyed by **path**. Also added `query --list`, "no results"/CJK-short-term hints, and stripped-record removal from the index. **Then the 3 high dogfood items were fixed too:** non-PDF `ingest` (text → `method:none` sidecar, searchable; images/unknown → clean "use `dnr record`" errors, no pypdf crash); **CJK <3-char search** (LIKE substring fallback → 2-char Korean terms 계약/이혼/특허 now match); **spec `content_hash`** now documents the `<CS>`/`<IM>` framing + ships **golden vectors** (`spec/vectors/`, text + audio). **63 tests green.** Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
 
 ---
 
@@ -47,7 +47,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 ## 🔜 M4 — Transcription (ingest)
 > Turn a raw file into a faithful record, once. **dnr owns no model** — the transcript is supplied by the agent or a local provider.
 - [x] **Transcriber-agnostic ingest pipeline** — content_hash → transcribe → record → sign → embed
-- [x] **Local `text-extract`** (pypdf, born-digital PDF, NFC) · **agent-supplied** path (`dnr record`)
+- [x] **Local `text-extract`** (pypdf, born-digital PDF, NFC) · **agent-supplied** path (`dnr record`) · **text files** (.txt/.md/.json/… → `method:none` sidecar) · clean errors for images/unknown
 - [ ] Local models: **Whisper** (audio) · local OCR/vision (scans); optional hosted API
 - [ ] Method hierarchy enforced: `text-extract` → `vision` → (`ocr` demoted)
 - [ ] **Verbatim** transcription contract (prompt) shipped in the skill: complete, no summary, mark uncertainty
@@ -67,8 +67,8 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 ## 🔜 M6 — i18n & search quality
 > Make non-English — especially Korean/CJK — actually searchable (the founder's own corpus).
-- [x] **trigram FTS5 tokenizer** — CJK substring search works without ICU (Korean FTS test passes)
-- [~] NFC normalization in `text-extract` done; full end-to-end + RTL / bidi remaining
+- [x] **trigram FTS5 tokenizer** + **LIKE substring fallback for <3-char terms** → 2-char Korean (계약/이혼/특허) now matches (both tested)
+- [~] NFC normalization in text-extract + text ingest done; full end-to-end + RTL / bidi remaining
 - [ ] Multilingual `fields` consistency so cross-folder queries stay portable
 - **Done when:** Korean legal-doc full-text search returns correct hits ✅ (trigram)
 
@@ -117,9 +117,10 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 ## 🔜 M12 — Spec formalization (the standard)  ← the goal
 > Make it implementable by others, and able to evolve.
 - [x] `spec/dnr-0.1.md` (normative) + `spec/dnr.schema.json` (JSON Schema) + `dnr validate` / `dnr schema`
-- [x] Carrier mapping table · per-format canonicalization algorithms · conformance gates (in spec)
-- [~] Versioning / forward-compat in spec; **golden conformance vectors**, profile registry, governance = TODO
-- **Done when:** a second, independent implementation passes published conformance vectors (vectors are the remaining piece).
+- [x] Carrier mapping table · per-format canonicalization (incl. documented PDF `<CS>`/`<IM>` framing) · conformance gates (in spec)
+- [x] **Golden conformance vectors** — `spec/vectors/` (text + audio) + a test the impl must reproduce; PDF/image/OOXML vectors pending
+- [~] Versioning / forward-compat in spec; profile registry, governance = TODO
+- **Done when:** a second, independent implementation passes the published vectors (text/audio shipped; PDF vector + a real 2nd impl remain).
 
 ## ⬜ M13 — Format expansion & scale hardening
 - [ ] Remaining carriers (FLAC / OGG / M4A / MP4·MOV / docx·xlsx / PNG·TIFF)

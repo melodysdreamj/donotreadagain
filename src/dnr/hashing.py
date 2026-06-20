@@ -106,10 +106,24 @@ def wav_content_hash(path) -> str:
     raise ValueError("no 'data' chunk found in WAV")
 
 
+def text_content_hash(path) -> str:
+    """Hash NFC-normalized text. Plain-text files have no metadata region to exclude."""
+    import unicodedata
+
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    return "sha256:" + sha256_hex(unicodedata.normalize("NFC", text).encode("utf-8"))
+
+
 _DISPATCH = {
     ".pdf": pdf_content_hash,
     ".mp3": mp3_content_hash,
     ".wav": wav_content_hash,
+    ".txt": text_content_hash,
+    ".md": text_content_hash,
+    ".json": text_content_hash,
+    ".csv": text_content_hash,
+    ".tsv": text_content_hash,
+    ".log": text_content_hash,
 }
 
 

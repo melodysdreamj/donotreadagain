@@ -62,15 +62,22 @@ record and a sidecar exist, the embedded record takes precedence.
 `content_hash` MUST be computed over the file's **decoded content**, never raw container bytes
 (raw bytes are not stable across re-serialization). Algorithm: SHA-256, prefixed `sha256:`.
 
-- **PDF** — `sha256(` for each page in order: decompressed content-stream bytes, then image
-  XObject bytes `)`.
-- **Audio (mp3/wav)** — `sha256(` the audio frames / PCM `data` chunk, excluding tags `)`.
-- **Image** — `sha256(` decoded pixels + dimensions `)`.
-- **OOXML** — `sha256(` sorted manifest of `(member-path, hash-of-decompressed-member)`,
-  excluding the dnr part `)`.
+- **PDF** (`dnr-pdf-content-1`) — `sha256` over, for each page in document order: the literal
+  ASCII bytes `<CS>` then the decompressed bytes of each content stream; then, for each image
+  XObject in the page's resources (XObject keys sorted as strings), the literal ASCII bytes
+  `<IM>` then the XObject's decoded stream bytes. `<CS>`/`<IM>` are domain separators.
+  Embedding MUST NOT re-encode content/image streams.
+- **Audio** (`dnr-audio-1`) — `sha256` of the MPEG audio frames (mp3: excluding ID3v2 prefix
+  and any ID3v1 suffix) or the RIFF `data` chunk (wav).
+- **Text** (`dnr-text-1`) — `sha256` of the NFC-normalized UTF-8 text (plain-text files have no
+  metadata region to exclude).
+- **Image** — `sha256` of decoded pixels + dimensions. *(planned)*
+- **OOXML** — `sha256` of a sorted manifest of `(member-path, hash-of-decompressed-member)`,
+  excluding the dnr part. *(planned)*
 
-Each profile has a name (`dnr-pdf-content-1`, …); hashes compare only within a profile.
-Conforming implementations SHOULD ship golden test vectors. Embedding a record MUST NOT change
+Each profile has a name; hashes compare only within a profile. **Golden test vectors** are
+published in [`vectors/`](vectors/) (text + audio for v0.1; PDF/image/OOXML pending) — an
+independent implementation MUST reproduce them. Embedding a record MUST NOT change
 `content_hash` (gate 1, §8).
 
 ## 5. Transcription

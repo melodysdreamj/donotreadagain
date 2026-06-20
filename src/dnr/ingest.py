@@ -22,6 +22,11 @@ DEFAULT_PROVIDER = {
     ".mp3": "whisper", ".wav": "whisper", ".flac": "whisper",
     ".m4a": "whisper", ".ogg": "whisper", ".opus": "whisper",
 }
+#: already-text — no transcription (method=none), stored as a sidecar
+TEXT_EXTS = {".txt", ".md", ".json", ".csv", ".tsv", ".log"}
+#: visual types that need an agent/vision transcript via `dnr record`
+AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".webp", ".heic",
+              ".mp4", ".mov", ".mkv", ".webm", ".docx", ".pptx", ".xlsx", ".html", ".rtf", ".epub"}
 
 
 def _mime(path) -> str:
@@ -75,14 +80,32 @@ def ingest(path, transcriber: str | None = None, *, sign: bool = True,
         existing = _already_ours(path)
         if existing is not None:
             return existing
+    ext = Path(path).suffix.lower()
+    if transcriber is None and ext in TEXT_EXTS:
+        return _ingest_text(path, sign=sign)
     if transcriber is None:
-        transcriber = DEFAULT_PROVIDER.get(Path(path).suffix.lower(), "text-extract")
+        transcriber = DEFAULT_PROVIDER.get(ext)
+    if transcriber is None:
+        if ext in AGENT_EXTS:
+            raise ValueError(
+                f"{ext} needs visual/agent transcription — transcribe it yourself and run "
+                f"`dnr record <file> --transcript-file <t.md> --method vision ...` (see `dnr guide`)")
+        raise ValueError(f"unsupported file type '{ext}' for ingest; see `dnr types`")
     res = transcribe.get(transcriber)(path)
     prov = {"method": res.method, "transcriber": res.transcriber}
     if res.confidence is not None:
         prov["confidence"] = res.confidence
     rec = make_record(path, res.text, prov, lang=res.lang, segments=res.segments)
     return _sign_and_embed(path, rec, sign=sign, sidecar=sidecar)
+
+
+def _ingest_text(path, *, sign: bool = True) -> dict:
+    """Text files need no transcription (method=none); store a sidecar record."""
+    import unicodedata
+
+    text = unicodedata.normalize("NFC", Path(path).read_text(encoding="utf-8", errors="replace"))
+    rec = make_record(path, text, {"method": "none", "transcriber": "none"})
+    return _sign_and_embed(path, rec, sign=sign, sidecar=True)
 
 
 def record_supplied(path, transcript_text: str, method: str = "vision",

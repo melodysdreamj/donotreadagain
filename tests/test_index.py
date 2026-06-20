@@ -104,6 +104,22 @@ def test_cli_index_query_smoke(corpus):
     assert cli.main(["query", str(corpus), "--where", "method='text-extract'"]) == 0
 
 
+def test_index_cjk_short_term_fallback(tmp_path):
+    """2-char CJK terms (below trigram minimum) match via the LIKE fallback (M6)."""
+    from dnr import index, ingest
+
+    folder = tmp_path / "kr2"
+    folder.mkdir()
+    doc = folder / "case.pdf"
+    _mkpdf(doc, "placeholder")
+    ingest.record_supplied(doc, "계약 위반에 따른 손해배상", "vision", "agent", lang="ko")
+    index.scan(folder)
+    assert index.query_match(folder, "계약") == ["case.pdf"]      # 2-char -> LIKE
+    assert index.query_match(folder, "손해") == ["case.pdf"]      # 2-char substring
+    assert index.query_match(folder, "특허") == []                # absent
+    assert index.query_match(folder, "손해배상") == ["case.pdf"]  # 4-char -> FTS
+
+
 def test_index_excludes_unsigned(tmp_path):
     """Security: an unsigned / forged record must NOT be indexed or queryable."""
     from dnr import embed, index

@@ -32,13 +32,13 @@ SUPPORTED: dict[str, tuple[str, str, str, str]] = {
     ".mov":  ("video",       "asr (audio) + vision (keyframes)",          "XMP",         "planned"),
     ".mkv":  ("video",       "asr (audio) + vision (keyframes)",          "sidecar",     "planned"),
     ".webm": ("video",       "asr (audio) + vision (keyframes)",          "sidecar",     "planned"),
-    # --- already-text: no transcription; fields-only sidecar, body read from the original ---
-    ".txt":  ("text",        "none",                                      "sidecar (fields)", "partial"),
-    ".md":   ("text",        "none",                                      "sidecar (fields)", "partial"),
-    ".json": ("text",        "none",                                      "sidecar (fields)", "partial"),
-    ".csv":  ("text",        "none -> summary+schema if large",           "sidecar (fields)", "partial"),
-    ".tsv":  ("text",        "none -> summary+schema if large",           "sidecar (fields)", "planned"),
-    ".log":  ("text",        "none -> summary+schema if large",           "sidecar (fields)", "planned"),
+    # --- already-text: no transcription (method=none); stored as a sidecar ---
+    ".txt":  ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
+    ".md":   ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
+    ".json": ("text",        "none (no transcription needed)",            "sidecar",     "implemented"),
+    ".csv":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
+    ".tsv":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
+    ".log":  ("text",        "none (large -> summary+schema: planned)",   "sidecar",     "implemented"),
 }
 
 

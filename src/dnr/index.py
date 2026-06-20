@@ -155,14 +155,27 @@ def scan(folder, trust: dict | None = None) -> dict:
 
 
 def query_match(folder, text: str) -> list[str]:
-    """Full-text search; returns matching paths (trigram — substrings of 3+ chars)."""
+    """Full-text search → matching paths.
+
+    Uses the FTS5 trigram index for terms of 3+ chars; for shorter terms (e.g. 2-char
+    CJK like 계약/이혼/특허) it falls back to a substring scan so they still match (M6).
+    """
     con = open_db(folder)
     try:
-        rows = con.execute(
-            "SELECT d.path FROM dnr_fts JOIN dnr d ON d.path = dnr_fts.path "
-            "WHERE dnr_fts MATCH ? ORDER BY rank",
-            (text,),
-        ).fetchall()
+        term = text.strip()
+        if len(term) < 3:
+            like = f"%{term}%"
+            rows = con.execute(
+                "SELECT path FROM dnr WHERE transcript LIKE ? OR title LIKE ? OR summary LIKE ? "
+                "ORDER BY path",
+                (like, like, like),
+            ).fetchall()
+        else:
+            rows = con.execute(
+                "SELECT d.path FROM dnr_fts JOIN dnr d ON d.path = dnr_fts.path "
+                "WHERE dnr_fts MATCH ? ORDER BY rank",
+                (text,),
+            ).fetchall()
         return [r["path"] for r in rows]
     finally:
         con.close()
