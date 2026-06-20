@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# uv
+uv.lock.*
+.uv/
+
+# dnr index — regenerable cache (safe to ignore; can travel as a warm cache if desired)
+.dnr.db
+.dnr.db-wal
+.dnr.db-shm
+*.dnr.json
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# scratch
+*.tmp
+/scratch/
