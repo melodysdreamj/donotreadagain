@@ -23,6 +23,29 @@ The second view is the win:
 
 …and the cache is **trustworthy**: a record is used only if it's signed by a trusted key *and* its `content_hash` still matches the file, so "fast" never means "stale or forged."
 
+## Demo
+
+```console
+$ dnr ingest contract.pdf            # transcribe once → sign → embed in the file
+ingested contract.pdf  [in-file]
+  method=text-extract transcriber=pypdf
+  signed key_id=ce6d170a497238f7
+
+$ dnr read contract.pdf              # later (or from any agent): verified cache hit — no re-parsing
+LOAN AGREEMENT
+Lender: Acme Capital LLC
+Borrower: Jordan Smith
+Principal: USD 1,200,000
+...
+
+$ dnr index ./contracts
+$ dnr query ./contracts --match damages --context 40    # search a whole folder, no files opened
+contract.pdf
+    … Principal: USD 1,200,000  Maturity: 2026-12-31  Damages clause: section 7.
+```
+
+The transcript lives *inside* `contract.pdf` — move it, email it, hand it to another agent, and the cached transcript travels with it.
+
 ## Quickstart
 
 Requires **Python 3.10+** (its stdlib includes the `sqlite3` used to read the index — one dependency covers both).

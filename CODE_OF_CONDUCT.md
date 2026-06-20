@@ -26,7 +26,7 @@ individual is representing the project in public spaces.
 
 ## Enforcement
 
-Report unacceptable behavior to the maintainer at **naumcare1997@gmail.com**. Reports
+Report unacceptable behavior to the maintainer at **melodysdreamj@gmail.com**. Reports
 will be reviewed and handled confidentially. Maintainers may remove, edit, or reject
 contributions and comments that violate this Code of Conduct.
 

@@ -1,4 +1,12 @@
-# dnr — security & threat model (M11)
+# dnr — security & threat model
+
+## Reporting a vulnerability
+
+Please report security issues **privately** to **melodysdreamj@gmail.com** — do **not** open a
+public issue for vulnerabilities. Include reproduction steps; you'll get an acknowledgement and a
+fix timeline. Responsible disclosure is appreciated.
+
+---
 
 dnr embeds AI-derived content into files that agents then *trust instead of re-reading*. That
 trust is the security surface. This document enumerates the threats and how dnr addresses them.
