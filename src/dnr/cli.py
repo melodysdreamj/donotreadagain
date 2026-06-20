@@ -1,6 +1,6 @@
 """dnr command-line interface (M7).
 
-Implemented: keygen · ingest · record · read · verify.
+Implemented: keygen · ingest · record · read · verify · guide · types.
 Coming (M5/M7): index · query · init · seal · strip.
 """
 from __future__ import annotations
@@ -75,6 +75,46 @@ def _cmd_verify(args) -> int:
     return 0 if (trusted and match) else 1
 
 
+def _cmd_guide(args) -> int:
+    from . import guide
+
+    sys.stdout.write(guide.GUIDE)
+    print(f"\n# instruction_id: {guide.INSTRUCTION_ID}")
+    print(f"# prompt_hash:   {guide.prompt_hash()}")
+    return 0
+
+
+def _cmd_types(args) -> int:
+    from . import formats
+
+    print(formats.render())
+    return 0
+
+
+def _cmd_index(args) -> int:
+    from . import index
+
+    s = index.scan(args.folder)
+    print(f"indexed {args.folder}: +{s['indexed']} new, {s['skipped']} skipped, "
+          f"{s['moved']} moved, {s['removed']} removed")
+    return 0
+
+
+def _cmd_query(args) -> int:
+    from . import index
+
+    if args.match:
+        for p in index.query_match(args.folder, args.match):
+            print(p)
+    elif args.where:
+        for r in index.query_where(args.folder, args.where):
+            print(f"{r['path']}\t{r.get('title') or ''}")
+    else:
+        print("dnr query: provide --match TEXT or --where SQL", file=sys.stderr)
+        return 2
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dnr", description="Read once, never again.")
     p.add_argument("-V", "--version", action="version", version=__version__)
@@ -82,14 +122,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("keygen", help="create/show the local signing key").set_defaults(fn=_cmd_keygen)
 
-    pi = sub.add_parser("ingest", help="transcribe (local) + record + sign + embed")
+    pi = sub.add_parser("ingest", help="transcribe (local, auto by type) + record + sign + embed")
     pi.add_argument("file")
-    pi.add_argument("--transcriber", default="text-extract")
+    pi.add_argument("--transcriber", default=None, help="override the local provider (text-extract, whisper)")
     pi.add_argument("--sidecar", action="store_true")
     pi.add_argument("--force", action="store_true", help="re-ingest even if a valid record exists")
     pi.set_defaults(fn=_cmd_ingest)
 
-    pr = sub.add_parser("record", help="record an agent-supplied transcript")
+    pr = sub.add_parser("record", help="record an agent-supplied transcript (follows the verbatim guide)")
     pr.add_argument("file")
     pr.add_argument("--transcript")
     pr.add_argument("--transcript-file")
@@ -106,6 +146,19 @@ def _build_parser() -> argparse.ArgumentParser:
     pv = sub.add_parser("verify", help="check a file's dnr record")
     pv.add_argument("file")
     pv.set_defaults(fn=_cmd_verify)
+
+    sub.add_parser("guide", help="print the verbatim transcription guide (for the agent)").set_defaults(fn=_cmd_guide)
+    sub.add_parser("types", help="list supported file types + transcription methods").set_defaults(fn=_cmd_types)
+
+    pix = sub.add_parser("index", help="harvest a folder's records into .dnr.db")
+    pix.add_argument("folder")
+    pix.set_defaults(fn=_cmd_index)
+
+    pq = sub.add_parser("query", help="query a folder's index")
+    pq.add_argument("folder")
+    pq.add_argument("--match", help="full-text search (FTS5, CJK-friendly)")
+    pq.add_argument("--where", help="SQL WHERE over the fixed columns")
+    pq.set_defaults(fn=_cmd_query)
     return p
 
 
