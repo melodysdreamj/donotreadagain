@@ -14,6 +14,8 @@ dependencies = [
   "rfc8785",
   "cryptography",
   "jsonschema",
+  "pillow",
+  "python-docx",
 ]
 
 [project.optional-dependencies]

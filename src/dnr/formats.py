@@ -7,19 +7,19 @@ from __future__ import annotations
 SUPPORTED: dict[str, tuple[str, str, str, str]] = {
     # --- documents (visual / layout) ---
     ".pdf":  ("document",    "text-extract (text layer) / vision (scan)", "XMP",         "partial"),
-    ".docx": ("document",    "text-extract",                              "OOXML part",  "planned"),
+    ".docx": ("document",    "text-extract (python-docx, local)",         "sidecar",     "implemented"),
     ".pptx": ("document",    "text-extract + vision",                     "OOXML part",  "planned"),
     ".xlsx": ("spreadsheet", "table-extract -> summary+schema",           "OOXML part",  "planned"),
     ".html": ("document",    "text-extract",                              "sidecar",     "planned"),
     ".rtf":  ("document",    "text-extract",                              "sidecar",     "planned"),
     ".epub": ("document",    "text-extract",                              "sidecar",     "planned"),
     # --- images ---
-    ".jpg":  ("image",       "vision (agent / OCR)",                      "XMP",         "planned"),
-    ".jpeg": ("image",       "vision (agent / OCR)",                      "XMP",         "planned"),
-    ".png":  ("image",       "vision (agent / OCR)",                      "XMP",         "planned"),
-    ".tiff": ("image",       "vision (agent / OCR)",                      "XMP",         "planned"),
-    ".webp": ("image",       "vision (agent / OCR)",                      "sidecar",     "planned"),
-    ".heic": ("image",       "vision (agent / OCR)",                      "sidecar",     "planned"),
+    ".jpg":  ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
+    ".jpeg": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
+    ".png":  ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
+    ".tiff": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
+    ".webp": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "implemented"),
+    ".heic": ("image",       "vision (agent, via `dnr record`)",          "sidecar",     "planned"),
     # --- audio ---
     ".mp3":  ("audio",       "asr (Whisper, local)",                      "ID3 TXXX",    "partial"),
     ".wav":  ("audio",       "asr (Whisper, local)",                      "sidecar",     "partial"),

@@ -114,16 +114,36 @@ def text_content_hash(path) -> str:
     return "sha256:" + sha256_hex(unicodedata.normalize("NFC", text).encode("utf-8"))
 
 
+def image_content_hash(path) -> str:
+    """Hash decoded pixels + dimensions (metadata writes don't change it; re-encoding does)."""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        im = im.convert("RGBA")
+        header = f"{im.width}x{im.height}".encode("ascii")
+        pixels = im.tobytes()
+    return "sha256:" + sha256_hex(header + b"|" + pixels)
+
+
+def ooxml_content_hash(path) -> str:
+    """Hash a sorted manifest of (member, sha256(decompressed member)), excluding the dnr part."""
+    import zipfile
+
+    with zipfile.ZipFile(path) as z:
+        parts = [f"{n}:{sha256_hex(z.read(n))}" for n in sorted(z.namelist()) if not n.endswith("dnr.xml")]
+    return "sha256:" + sha256_hex("\n".join(parts).encode("utf-8"))
+
+
 _DISPATCH = {
     ".pdf": pdf_content_hash,
     ".mp3": mp3_content_hash,
     ".wav": wav_content_hash,
-    ".txt": text_content_hash,
-    ".md": text_content_hash,
-    ".json": text_content_hash,
-    ".csv": text_content_hash,
-    ".tsv": text_content_hash,
-    ".log": text_content_hash,
+    ".txt": text_content_hash, ".md": text_content_hash, ".json": text_content_hash,
+    ".csv": text_content_hash, ".tsv": text_content_hash, ".log": text_content_hash,
+    ".jpg": image_content_hash, ".jpeg": image_content_hash, ".png": image_content_hash,
+    ".tiff": image_content_hash, ".tif": image_content_hash, ".webp": image_content_hash,
+    ".bmp": image_content_hash, ".gif": image_content_hash,
+    ".docx": ooxml_content_hash, ".xlsx": ooxml_content_hash, ".pptx": ooxml_content_hash,
 }
 
 

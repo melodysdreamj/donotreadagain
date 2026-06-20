@@ -63,10 +63,20 @@ def whisper_transcribe(path, model_size: str = "base") -> TranscriptResult:
     )
 
 
+def docx_extract(path) -> TranscriptResult:
+    """Born-digital Word document -> paragraph text via python-docx. Local, no model."""
+    import docx
+
+    document = docx.Document(str(path))
+    text = "\n".join(p.text for p in document.paragraphs)
+    return TranscriptResult(text=unicodedata.normalize("NFC", text), method="text-extract", transcriber="python-docx")
+
+
 #: name -> local provider callable. Local OCR / vision register here later.
 REGISTRY = {
     "text-extract": text_extract,
     "whisper": whisper_transcribe,
+    "docx": docx_extract,
 }
 
 

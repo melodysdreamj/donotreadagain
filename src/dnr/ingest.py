@@ -18,15 +18,15 @@ from . import record as _record
 
 #: default local transcriber by extension — audio -> Whisper, born-digital PDF -> text-extract
 DEFAULT_PROVIDER = {
-    ".pdf": "text-extract",
+    ".pdf": "text-extract", ".docx": "docx",
     ".mp3": "whisper", ".wav": "whisper", ".flac": "whisper",
     ".m4a": "whisper", ".ogg": "whisper", ".opus": "whisper",
 }
 #: already-text — no transcription (method=none), stored as a sidecar
 TEXT_EXTS = {".txt", ".md", ".json", ".csv", ".tsv", ".log"}
-#: visual types that need an agent/vision transcript via `dnr record`
-AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".webp", ".heic",
-              ".mp4", ".mov", ".mkv", ".webm", ".docx", ".pptx", ".xlsx", ".html", ".rtf", ".epub"}
+#: visual/structured types that need an agent/vision transcript via `dnr record`
+AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp", ".heic", ".bmp", ".gif",
+              ".mp4", ".mov", ".mkv", ".webm", ".pptx", ".xlsx", ".html", ".rtf", ".epub"}
 
 
 def _mime(path) -> str:
