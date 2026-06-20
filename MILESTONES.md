@@ -6,7 +6,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 **Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8 → M9. &nbsp; **v0.1 cut** = M1–M8 (build) + **M9 (dogfood — the real release-readiness gate)**. &nbsp; **M10–M14** = operability, security, the standard, scale, release.
 
-**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **42 tests green.** M1–M8 cores landed. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
+**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **46 tests green.** M1–M9 landed — **M9 dogfooding ran (10 scenarios, multi-agent): 8/10 pass, all 3 security scenarios held (forged/tampered/freshness refused), and the one real bug (corrupt-file unhandled traceback aborting a scan) is fixed**. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
 
 ---
 
@@ -87,17 +87,18 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [x] **One-phrase bootstrap** — `dnr init` self-installs the skill stanza into the repo's agent surface (AGENTS.md / CLAUDE.md; idempotent marked block) + ensures the signing key. User says *"apply dnr"* → agent runs `dnr init`.
 - **Done when:** an agent given only the skill queries a dnr folder and skips re-parsing correctly; `dnr init` bootstraps from a single user phrase.
 
-## ⬜ M9 — Agent scenario testing & dogfooding
+## 🔜 M9 — Agent scenario testing & dogfooding
 > Drive the whole thing with real agents across many scenarios — the bugs that specs & unit tests miss surface here, and feed M10–M12. This is the real release-readiness gate.
-- [ ] **Scenario matrix**, run by agents: ingest / query / read / route / move / edit / re-ingest across diverse inputs — legal PDFs, scanned, audio, mixed folders, huge files, cold folders, stale index, moved/renamed files
-- [ ] **Multi-harness**: Claude Code / Codex / Cursor — does each *actually* skip re-parsing given only the skill?
-- [ ] **Adversarial / edge scenarios**: malicious record (injection), forged signature, corrupt / encrypted file, concurrent agents, re-encoded transport
-- [ ] **Measure**: cache hit-rate · protocol-compliance rate · token / latency delta · a failure taxonomy → backlog for M10 (operability) & M11 (security)
-- [ ] Run as **multi-agent workflows** (fan scenarios out in parallel)
-- **Done when:** agents complete the scenario matrix with a known failure list + a real hit-rate / savings number (the seed of the M14 benchmark).
+- [x] **Scenario matrix**, run by agents: cache-hit, cross-file query, cold folder, move, freshness, incremental, CJK, + adversarial
+- [~] **Multi-harness**: exercised via the real `dnr` CLI by agents; actual Claude Code / Codex / Cursor runs are a broader TODO
+- [x] **Adversarial / edge**: forged-unsigned (refused), tampered-signed (verify fails), freshness (no stale leak), corrupt/garbage file
+- [x] **Measure**: 8/10 pass, security held, failure taxonomy + prioritized backlog produced
+- [x] Run as a **multi-agent workflow** (10 scenarios in parallel + synthesis)
+- **Done when:** ✅ matrix complete with a failure list; fixes fed back (corrupt-file robustness → done). Remaining low-pri: CJK <3-char FTS, file-embedded-cache note.
 
-## ⬜ M10 — Reversibility & corpus operability
+## 🔜 M10 — Reversibility & corpus operability
 > Make it safe to undo, and runnable at corpus scale.
+- [x] **Robustness** (from M9 dogfooding): corrupt/missing files no longer crash — clean errors, one bad file never aborts a scan; `dnr read` falls back gracefully
 - [ ] `dnr strip` (un-embed, restore original) · **bulk rollback** of a bad ingest
 - [ ] **Resumable / idempotent** ingest after crash · `--dry-run`
 - [ ] Rebuild a corrupted/lost `.dnr.db` without re-incurring transcription

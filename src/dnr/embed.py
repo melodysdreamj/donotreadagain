@@ -91,9 +91,12 @@ def embed_pdf(path, record: dict) -> None:
 def extract_pdf(path):
     import pikepdf
 
-    with pikepdf.open(path) as pdf:
-        with pdf.open_metadata() as meta:
-            v = meta.get("dc:description")
+    try:
+        with pikepdf.open(path) as pdf:
+            with pdf.open_metadata() as meta:
+                v = meta.get("dc:description")
+    except Exception:
+        return None  # unreadable / corrupt PDF -> no record (caller falls back)
     if not v:
         return None
     try:
@@ -134,7 +137,7 @@ def extract_mp3(path):
 
     try:
         tags = ID3(path)
-    except ID3NoHeaderError:
+    except Exception:  # no header / corrupt -> no record
         return None
     for fr in tags.getall("TXXX"):
         if fr.desc == "dnr":

@@ -108,31 +108,34 @@ def scan(folder) -> dict:
         existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime, content_hash FROM dnr")}
         seen_paths: set[str] = set()
         seen_hashes: set[str] = set()
-        indexed = skipped = moved = removed = 0
+        indexed = skipped = moved = removed = errored = 0
 
         for abspath in _iter_files(folder):
             rel = os.path.relpath(abspath, folder)
             seen_paths.add(rel)
-            st = os.stat(abspath)
-            prev = existing.get(rel)
-            if prev and prev["bytes"] == st.st_size and abs((prev["mtime"] or 0) - st.st_mtime) < 1e-6:
-                skipped += 1
-                seen_hashes.add(prev["content_hash"])
-                continue
-            rec = _embed.extract(abspath)
-            if rec is None:
-                continue  # index != ingest: no record -> skip (not transcribed yet)
-            ch = rec.get("content_hash")
-            hit = con.execute("SELECT path FROM dnr WHERE content_hash=?", (ch,)).fetchone()
-            if hit and hit["path"] != rel:  # same content at a new path = a move
-                con.execute("UPDATE dnr SET path=?, mtime=?, bytes=? WHERE content_hash=?",
-                            (rel, st.st_mtime, st.st_size, ch))
-                moved += 1
+            try:
+                st = os.stat(abspath)
+                prev = existing.get(rel)
+                if prev and prev["bytes"] == st.st_size and abs((prev["mtime"] or 0) - st.st_mtime) < 1e-6:
+                    skipped += 1
+                    seen_hashes.add(prev["content_hash"])
+                    continue
+                rec = _embed.extract(abspath)
+                if rec is None:
+                    continue  # no record (or unreadable) -> skip; index != ingest
+                ch = rec.get("content_hash")
+                hit = con.execute("SELECT path FROM dnr WHERE content_hash=?", (ch,)).fetchone()
+                if hit and hit["path"] != rel:  # same content at a new path = a move
+                    con.execute("UPDATE dnr SET path=?, mtime=?, bytes=? WHERE content_hash=?",
+                                (rel, st.st_mtime, st.st_size, ch))
+                    moved += 1
+                    seen_hashes.add(ch)
+                    continue
+                _harvest(con, folder, abspath, rec)
+                indexed += 1
                 seen_hashes.add(ch)
-                continue
-            _harvest(con, folder, abspath, rec)
-            indexed += 1
-            seen_hashes.add(ch)
+            except Exception:
+                errored += 1  # one bad file must not abort the whole scan
 
         for path, r in existing.items():
             if path not in seen_paths and r["content_hash"] not in seen_hashes:
@@ -141,7 +144,8 @@ def scan(folder) -> dict:
                 removed += 1
 
         con.commit()
-        return {"indexed": indexed, "skipped": skipped, "moved": moved, "removed": removed}
+        return {"indexed": indexed, "skipped": skipped, "moved": moved,
+                "removed": removed, "errored": errored}
     finally:
         con.close()
 

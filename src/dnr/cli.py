@@ -96,7 +96,7 @@ def _cmd_index(args) -> int:
 
     s = index.scan(args.folder)
     print(f"indexed {args.folder}: +{s['indexed']} new, {s['skipped']} skipped, "
-          f"{s['moved']} moved, {s['removed']} removed")
+          f"{s['moved']} moved, {s['removed']} removed, {s['errored']} errored")
     return 0
 
 
@@ -197,7 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     if not getattr(args, "fn", None):
         _build_parser().print_help()
         return 0
-    return args.fn(args)
+    try:
+        return args.fn(args)
+    except Exception as exc:  # clean error, never a raw traceback
+        print(f"dnr {getattr(args, 'cmd', '') or ''}: error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

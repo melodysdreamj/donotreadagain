@@ -47,12 +47,12 @@ def make_record(path, transcript_text: str, provenance: dict, *,
 
 
 def _already_ours(path) -> dict | None:
-    rec = _embed.extract(path)
-    if rec is None or not signing.verify(rec, keyring.default_trust()):
-        return None
     try:
+        rec = _embed.extract(path)
+        if rec is None or not signing.verify(rec, keyring.default_trust()):
+            return None
         return rec if rec.get("content_hash") == hashing.content_hash(path) else None
-    except ValueError:
+    except Exception:
         return None
 
 
@@ -102,12 +102,15 @@ def read_cached(path, trust: dict | None = None) -> str | None:
     Skip-reparse gate: present record + valid signature from a trusted key +
     content_hash matches the file. Anything else -> None (read normally).
     """
-    rec = _embed.extract(path)
-    if rec is None:
-        return None
-    trust = keyring.default_trust() if trust is None else trust
-    if not signing.verify(rec, trust):
-        return None
-    if rec.get("content_hash") != hashing.content_hash(path):
-        return None
-    return (rec.get("transcript") or {}).get("text")
+    try:
+        rec = _embed.extract(path)
+        if rec is None:
+            return None
+        trust = keyring.default_trust() if trust is None else trust
+        if not signing.verify(rec, trust):
+            return None
+        if rec.get("content_hash") != hashing.content_hash(path):
+            return None
+        return (rec.get("transcript") or {}).get("text")
+    except Exception:
+        return None  # missing / corrupt file -> cache miss -> caller reads normally
