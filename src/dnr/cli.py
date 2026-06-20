@@ -115,6 +115,32 @@ def _cmd_query(args) -> int:
     return 0
 
 
+def _cmd_init(args) -> int:
+    import re
+
+    from . import keyring, signing, skill
+
+    target = Path(args.dir)
+    target.mkdir(parents=True, exist_ok=True)
+    block = skill.stanza()
+    candidates = [target / "AGENTS.md", target / "CLAUDE.md"]
+    surfaces = [c for c in candidates if c.exists()] or [target / "AGENTS.md"]
+    for f in surfaces:
+        text = f.read_text(encoding="utf-8") if f.exists() else ""
+        if skill.BEGIN in text and skill.END in text:
+            pat = re.escape(skill.BEGIN) + r".*?" + re.escape(skill.END)
+            new = re.sub(pat, lambda _m: block, text, flags=re.S)
+        else:
+            sep = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
+            new = f"{text}{sep}{block}\n"
+        f.write_text(new, encoding="utf-8")
+    _, pub = keyring.default_keypair()
+    print(f"dnr initialized in {target}: skill -> {', '.join(s.name for s in surfaces)}; "
+          f"signing key_id={signing.key_id(pub)}")
+    print('tell your agent: "apply dnr" (it will read the stanza).')
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dnr", description="Read once, never again.")
     p.add_argument("-V", "--version", action="version", version=__version__)
@@ -159,6 +185,10 @@ def _build_parser() -> argparse.ArgumentParser:
     pq.add_argument("--match", help="full-text search (FTS5, CJK-friendly)")
     pq.add_argument("--where", help="SQL WHERE over the fixed columns")
     pq.set_defaults(fn=_cmd_query)
+
+    pin = sub.add_parser("init", help="install the dnr agent skill into this repo + ensure a key")
+    pin.add_argument("dir", nargs="?", default=".")
+    pin.set_defaults(fn=_cmd_init)
     return p
 
 

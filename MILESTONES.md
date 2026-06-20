@@ -6,7 +6,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 **Critical path:** M1 → M2 → (M3 ∥ M4) → M5 → M6 → M7 → M8 → M9. &nbsp; **v0.1 cut** = M1–M8 (build) + **M9 (dogfood — the real release-readiness gate)**. &nbsp; **M10–M14** = operability, security, the standard, scale, release.
 
-**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; **38 tests green.** M1–M5 cores + M6 tokenizer landed. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock.
+**Progress (2026-06-20):** working `dnr` package + CLI — `hashing`/`record`(JCS)/`embed`(PDF·mp3·sidecar; gates 1·2·4)/`signing`(Ed25519+keyring); `transcribe` (transcriber-agnostic: local text-extract + agent path + Whisper provider) + `guide` (verbatim contract `dnr-verbatim-1`); `ingest`/`read_cached` (skip-reparse, idempotent); `index` (`.dnr.db` fixed table + FTS5 **trigram for CJK** + incremental scan + move resilience + tombstone). CLI: **keygen·ingest·record·read·verify·guide·types·index·query**. End-to-end (ingest→index→query→read) works with **zero API keys**; `dnr init` installs the agent skill (one-phrase bootstrap); **42 tests green.** M1–M8 cores landed. Remaining debt: golden vectors / cross-tool, proper `dnr:` XMP namespace, more carriers (docx/images/video/Vorbis), pre-query auto-scan, ingest lock, uvx/binary packaging.
 
 ---
 
@@ -72,19 +72,19 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] Multilingual `fields` consistency so cross-folder queries stay portable
 - **Done when:** Korean legal-doc full-text search returns correct hits ✅ (trigram)
 
-## ⬜ M7 — CLI & distribution
+## 🔜 M7 — CLI & distribution
 > One tool that ties it together, runnable anywhere.
-- [ ] `dnr init | ingest | index | query | read | verify | seal | strip`
-- [ ] Protocol enforced in code (not prose)
+- [~] `dnr init·ingest·record·read·verify·keygen·guide·types·index·query` done; `seal·strip` TODO
+- [x] Protocol enforced in code (`dnr read/index/query` are real commands, not prose)
 - [ ] `uvx` package **+ single static binary** (per-platform releases) — dependency-free drop-in
 - **Done when:** `uvx dnr index <folder>` and `dnr query` work on a fresh machine, offline (minus transcription API).
 
-## ⬜ M8 — Agent integration (consumer)
+## 🔜 M8 — Agent integration (consumer)
 > Zero-install consumption by AI agents.
-- [ ] `AGENTS.md` / skill stanza: fixed schema + example queries + consumer contract
-- [ ] Consumer path: read record via ambient `sqlite3` / `exiftool` — no dnr install
-- [ ] query-driven lazy-ingest behavior wired into the skill
-- [ ] **One-phrase bootstrap** — `dnr init` self-installs the skill stanza into the repo's agent surface (AGENTS.md / CLAUDE.md / .cursor rules; auto-detected, idempotent, append a marked block) + verifies the tool. So a user adopts by telling their agent *"apply dnr"* → it runs `uvx dnr init`. Inspectable, pinned, touches the repo only.
+- [x] `AGENTS.md` / skill stanza: fixed schema + example queries + consumer contract + verbatim guide
+- [~] Consumer path documented (`dnr read`/`query`; raw `sqlite3` via `_dnr_readme`)
+- [~] query-driven lazy-ingest described in the skill; full ask-flow is M4 TODO
+- [x] **One-phrase bootstrap** — `dnr init` self-installs the skill stanza into the repo's agent surface (AGENTS.md / CLAUDE.md; idempotent marked block) + ensures the signing key. User says *"apply dnr"* → agent runs `dnr init`.
 - **Done when:** an agent given only the skill queries a dnr folder and skips re-parsing correctly; `dnr init` bootstraps from a single user phrase.
 
 ## ⬜ M9 — Agent scenario testing & dogfooding
