@@ -8,30 +8,27 @@ def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("DNR_HOME", str(tmp_path / "dnrhome"))
 
 
-def test_ingest_txt_as_sidecar(tmp_path):
-    from dnr import embed, hashing, ingest
+def test_ingest_txt_makes_no_record(tmp_path):
+    """Already-readable text needs no transcription and no record — agents read it directly."""
+    from dnr import ingest
 
     p = tmp_path / "notes.txt"
     p.write_text("meeting notes: project alpha deadline friday", encoding="utf-8")
-    rec = ingest.ingest(p)
-    assert rec["provenance"]["method"] == "none"
-    assert rec["content_hash"] == hashing.content_hash(p)
-    assert embed.extract_sidecar(p) == rec  # txt has no in-file slot -> sidecar
-    assert ingest.read_cached(p) is not None
+    assert ingest.ingest(p) is None              # no record produced
+    assert not (tmp_path / "notes.txt.dnr.json").exists()  # no sidecar
+    assert ingest.read_cached(p) is None         # nothing cached -> read the file directly
 
 
-def test_text_files_indexed_and_searchable(tmp_path):
+def test_text_not_indexed(tmp_path):
+    """Text isn't put in the dnr index (it's read directly); ingesting it is a no-op."""
     from dnr import index, ingest
 
     folder = tmp_path / "c"
     folder.mkdir()
     (folder / "a.txt").write_text("alpha banana cherry", encoding="utf-8")
-    (folder / "b.md").write_text("delta echo foxtrot", encoding="utf-8")
-    ingest.ingest(folder / "a.txt")
-    ingest.ingest(folder / "b.md")
-    stats = index.scan(folder)
-    assert stats["indexed"] == 2
-    assert index.query_match(folder, "banana") == ["a.txt"]
+    assert ingest.ingest(folder / "a.txt") is None
+    index.scan(folder)
+    assert index.query_match(folder, "banana") == []  # text is not a dnr record
 
 
 def test_ingest_image_clean_error(tmp_path):

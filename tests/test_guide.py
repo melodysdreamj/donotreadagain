@@ -28,5 +28,5 @@ def test_formats_matrix_render():
 
     out = formats.render()
     assert ".pdf" in out and ".mp3" in out and "asr (Whisper" in out
-    assert all(s in {"implemented", "partial", "planned"}
+    assert all(s in {"implemented", "partial", "planned", "n/a"}
                for *_, s in formats.SUPPORTED.values())

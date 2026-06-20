@@ -35,7 +35,7 @@ def test_image_record_and_search(tmp_path):
     _mkpng(p)
     rec = ingest.record_supplied(p, "Bar chart: Q4 revenue 1,200,000 KRW by region", "vision", "claude-opus-4-vision")
     assert rec["provenance"]["method"] == "vision"
-    assert embed.extract_sidecar(p) == rec  # image -> sidecar, file untouched
+    assert embed.extract(p) == rec  # image -> in-file (PNG iTXt), portable; pixels untouched
     index.scan(folder)
     assert index.query_match(folder, "revenue") == ["chart.png"]
 
@@ -62,9 +62,9 @@ def test_docx_ingest_local(tmp_path):
     rec = ingest.ingest(p)
     assert rec["provenance"]["transcriber"] == "python-docx"
     assert rec["content_hash"] == hashing.content_hash(p)
-    assert embed.extract_sidecar(p) == rec
-    index.scan(folder)
-    assert index.query_match(folder, "renewal") == ["memo.docx"]
+    assert embed.extract(p) is None  # docx has no in-file carrier yet -> db-only, file untouched
+    assert index.db_only_record(folder, p) == rec
+    assert index.query_match(folder, "renewal") == ["memo.docx"]  # db-only -> queryable
 
 
 def test_docx_bytes_unchanged_by_ingest(tmp_path):
