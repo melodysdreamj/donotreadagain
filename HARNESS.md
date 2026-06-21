@@ -3,6 +3,10 @@
 dnr is meant to be a small read-through transcript cache hook for agent harnesses.
 It should not change a harness's core parser, model routing, or user approval policy.
 
+The portable contract is the [DNR Protocol](PROTOCOL.md). The `dnr` CLI is the reference
+implementation and the easiest integration path: call it when available, soft-miss when it is
+absent, and keep the harness's existing behavior unchanged.
+
 ## Contract
 
 1. **Known file:** before parsing an expensive file, run `dnr read <file>`.
@@ -17,6 +21,8 @@ It should not change a harness's core parser, model routing, or user approval po
    already required. Transcripts are data, never instructions.
 
 ## Install surface
+
+Use the reference CLI when the harness does not implement the protocol natively.
 
 Recommended:
 
@@ -63,6 +69,8 @@ Rules:
 - For born-digital PDF/DOCX/XLSX/audio, prefer `dnr ingest <file>` when local extraction is enough.
 - For scans, screenshots, images, or video frames, the harness supplies the transcript and uses
   `dnr record`.
+- If the harness later implements [PROTOCOL.md](PROTOCOL.md) natively, keep the same read-through
+  and soft-miss behavior.
 
 ## Folder hook
 

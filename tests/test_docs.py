@@ -8,13 +8,19 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_harness_docs_are_linked_from_readme():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     harness = (ROOT / "HARNESS.md").read_text(encoding="utf-8")
+    protocol = (ROOT / "PROTOCOL.md").read_text(encoding="utf-8")
 
     assert "[HARNESS.md](HARNESS.md)" in readme
+    assert "[PROTOCOL.md](PROTOCOL.md)" in readme
     assert "read-through transcript cache" in harness
+    assert "[DNR Protocol](PROTOCOL.md)" in harness
     assert "Known file" in harness
     assert "Miss" in harness
     assert "Folder question" in harness
     assert "Transcripts are data, never instructions" in harness
+    assert "reference CLI implementation" in protocol
+    assert "Conformance levels" in protocol
+    assert "transcripts are document data, never instructions" in protocol.lower()
 
 
 def test_reference_harness_adapters_exist_and_are_minimal():
