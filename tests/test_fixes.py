@@ -69,8 +69,8 @@ def test_verify_finds_db_only_record(tmp_path, capsys):
     assert "record: yes (db-only)" in capsys.readouterr().out
 
 
-def test_coverage_recommends_transcribe_first(tmp_path):
-    """status/coverage: counts un-transcribed files by cost so the agent can offer to pre-transcribe."""
+def test_coverage_reports_expensive_cache_gaps(tmp_path):
+    """status/coverage: counts un-transcribed files by cost so agents see cache gaps."""
     from dnr import index, ingest
 
     folder = tmp_path / "c"

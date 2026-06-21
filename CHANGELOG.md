@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.7
+
+### Changed
+- Agent instructions now frame dnr as an opportunistic cache, not a pre-transcription crawler:
+  agents should first use cached/indexed knowledge and only record transcripts for files they
+  already need to read for the current task.
+
 ## 0.1.6
 
 ### Changed

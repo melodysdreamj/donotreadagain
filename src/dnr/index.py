@@ -529,9 +529,11 @@ _COST = {"image": "model", "audio": "model", "video": "model",
 
 
 def coverage(folder) -> dict:
-    """How many supported files already carry a transcript vs still need one — so an agent can,
-    on the first folder-wide question, offer to transcribe-first (then every later view is a cache
-    hit). Fast: checks record *presence*, not content rehash."""
+    """How many supported files already carry a transcript vs still need one.
+
+    Fast: checks record *presence*, not content rehash. Pending expensive files are cache gaps
+    to fill only when the current task already requires reading/parsing those files.
+    """
     by_kind = {"model": [0, 0], "parse": [0, 0], "cheap": [0, 0]}  # kind -> [total, recorded]
     pending = []
     db_only = set()
@@ -561,8 +563,8 @@ def coverage(folder) -> dict:
         "by_kind": by_kind,
         "pending_model": sum(1 for p in pending if p["kind"] == "model"),
         "pending_parse": sum(1 for p in pending if p["kind"] == "parse"),
-        # a transcribe-first offer is worth making when un-transcribed files would otherwise be
-        # re-parsed (parse) or re-inferred by a model (model) on every future view.
+        # Kept for compatibility: true when pending files would be expensive if the current task
+        # actually needs them. This is a cache-gap signal, not a request to pre-transcribe a corpus.
         "should_offer_transcribe": any(p["kind"] in ("model", "parse") for p in pending),
         "pending_list": pending,
     }

@@ -287,10 +287,10 @@ def _cmd_status(args) -> int:
         return 0
     if c["should_offer_transcribe"]:
         print()
-        print(f"transcribe-first recommended: {c['pending_model']} model-only + "
-              f"{c['pending_parse']} parse-heavy files un-transcribed (`dnr status <folder> --pending` to list).")
-        print("Doing it once makes this and every future query a cache hit "
-              "(audio/scans only searchable after). Then:")
+        print(f"expensive files still uncached: {c['pending_model']} model-only + "
+              f"{c['pending_parse']} parse-heavy (`dnr status <folder> --pending` to list).")
+        print("Do not pre-transcribe just because they are pending. When the current task needs one, "
+              "read/transcribe it once and cache it, then:")
         print("  dnr ingest <born-digital> · dnr record <image/audio/video> · dnr index <folder>")
     return 0
 
@@ -401,7 +401,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("guide", help="print the verbatim transcription guide (for the agent)").set_defaults(fn=_cmd_guide)
     sub.add_parser("types", help="list supported file types + transcription methods").set_defaults(fn=_cmd_types)
 
-    pst = sub.add_parser("status", help="folder transcription coverage + transcribe-first recommendation")
+    pst = sub.add_parser("status", help="folder transcript coverage + pending cache gaps")
     pst.add_argument("folder")
     pst.add_argument("--pending", action="store_true", help="list the files still needing transcription")
     pst.set_defaults(fn=_cmd_status)
