@@ -43,6 +43,18 @@ def test_init_appends_agent_file_bootstrap(tmp_path, monkeypatch):
     assert p.read_text(encoding="utf-8") == "# Existing notes\n\n" + bootstrap.AGENT_BOOTSTRAP + "\n"
 
 
+def test_init_upgrades_legacy_agent_file_bootstrap(tmp_path, monkeypatch):
+    from dnr import bootstrap, cli
+
+    monkeypatch.chdir(tmp_path)
+    p = tmp_path / "AGENTS.md"
+    p.write_text("# Existing notes\n\n" + bootstrap.OLD_AGENT_BOOTSTRAPS[0] + "\n", encoding="utf-8")
+    assert cli.main(["init", "--agent-file", "AGENTS.md"]) == 0
+    text = p.read_text(encoding="utf-8")
+    assert bootstrap.OLD_AGENT_BOOTSTRAPS[0] not in text
+    assert text == "# Existing notes\n\n" + bootstrap.AGENT_BOOTSTRAP + "\n"
+
+
 def test_init_accepts_multiple_agent_files(tmp_path, monkeypatch):
     from dnr import bootstrap, cli
 
@@ -60,7 +72,8 @@ def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     assert md.startswith("---\nname: dnr\n")
     assert "description:" in md.split("---", 2)[1]
     for marker in ("read once, never again", "## A. One specific file", "## B. A folder-wide question",
-                   "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md"):
+                   "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md",
+                   "exact package name"):
         assert marker in md
     assert cli.main(["skill"]) == 0
     assert "name: dnr" in capsys.readouterr().out

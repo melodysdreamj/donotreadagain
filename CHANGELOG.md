@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.4
+
+### Changed
+- Agent-file bootstraps now name the exact PyPI package and preferred `uvx` runner, and
+  `dnr init --agent-file PATH` upgrades the older URL-only bootstrap in place.
+
 ## 0.1.3
 
 ### Added

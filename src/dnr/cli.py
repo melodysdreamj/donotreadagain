@@ -445,7 +445,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     pin = sub.add_parser("init", help="ensure a signing key + optionally add an agent-file bootstrap")
     pin.add_argument("--agent-file", action="append", metavar="PATH",
-                     help="append the one-line dnr bootstrap to AGENTS.md, CLAUDE.md, etc.; repeatable")
+                     help="append or upgrade the dnr bootstrap in AGENTS.md, CLAUDE.md, etc.; repeatable")
     pin.set_defaults(fn=_cmd_init)
     sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 
