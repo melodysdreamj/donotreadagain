@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.6
+
+### Changed
+- Agent instructions now treat in-file embedding as the default storage mode and tell agents not
+  to ask about storage unless the user explicitly requests byte-identical/db-only storage.
+
 ## 0.1.5
 
 ### Added

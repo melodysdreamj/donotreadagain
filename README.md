@@ -84,7 +84,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 
 **Where the record lives (no sidecar files):**
 - **In-file** for formats with a metadata slot — PDF→XMP, MP3→ID3, PNG→iTXt, JPEG→APP segment. Pixels/bytes-of-content untouched (`content_hash` invariant), so the transcript **travels with the file** (move it, email it — it's still there).
-- **db-only** in the folder's `.dnr.db` for formats with no slot yet (docx, …), or via `--no-embed` for evidentiary originals you must not modify (file left byte-identical). db-only records are folder-scoped; if the source file changes, the stale record is removed and the file must be re-ingested/re-recorded.
+- **db-only** in the folder's `.dnr.db` for formats with no slot yet (docx, …), or via `--no-embed` when the user explicitly wants byte-identical originals / no file modification. db-only records are folder-scoped; if the source file changes, the stale record is removed and the file must be re-ingested/re-recorded.
 - **Nothing** for already-readable text (`.txt`/`.md`/`.csv`) — an agent just reads it.
 
 **Current format support:**

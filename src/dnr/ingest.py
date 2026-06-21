@@ -67,7 +67,7 @@ def _already_ours(path) -> dict | None:
 def _sign_and_store(path, rec: dict, *, sign: bool = True, no_embed: bool = False) -> dict:
     """Sign, then store the record **in-file** if the type has a carrier, else as a **db-only**
     record in the folder index. No sidecars. ``no_embed`` forces db-only even for a carrier type
-    (leaves the original byte-identical — use for evidentiary files you must not modify)."""
+    (leaves the original byte-identical — use when explicitly requested)."""
     if sign:
         priv, pub = keyring.default_keypair()
         rec = signing.sign(rec, priv, pub)

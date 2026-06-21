@@ -35,14 +35,16 @@ GLOBAL_AGENT_BOOTSTRAP = (
     "## dnr global cache habit\n"
     "Before parsing PDFs, images/scans, audio/video, Office files, or large document folders, "
     "check dnr first so already-transcribed files are not re-read.\n"
+    "- Storage default: embed records in-file for carrier formats. Do not ask which storage mode "
+    "to use. Use `--no-embed` only when the user explicitly asks to keep originals byte-identical, "
+    "avoid file modifications, or use db-only storage.\n"
     "- Known file: run `uvx --from donotreadagain dnr read <file>`; if stdout is non-empty, "
     "use that transcript and do not re-parse the file.\n"
     "- Folder question: run `uvx --from donotreadagain dnr index <folder>` before querying, "
     "then `uvx --from donotreadagain dnr query <folder> ...`.\n"
     "- If uvx is unavailable, install the explicitly requested PyPI package with "
     "`python3 -m pip install --user donotreadagain`, then run `dnr <cmd>`.\n"
-    "- Do not re-transcribe valid cached records. Ask before bulk transcription or before "
-    "modifying evidentiary originals.\n"
+    "- Do not re-transcribe valid cached records. Ask before bulk transcription.\n"
     f"{GLOBAL_AGENT_END}"
 )
 

@@ -35,9 +35,11 @@ say so briefly and continue using dnr in the current task.
 1. **Coverage:** `dnr status <folder>` — cached vs pending by cost (images/audio/video = a model each
    view; PDF/Office = re-parse; text = free).
 2. **Transcribe the pending files that matter** — a real step (`dnr index` does NOT transcribe). If it's
-   a **bulk** run, get an OK first; for originals you must not modify add `--no-embed` (gate below):
+   a **bulk** run, get an OK first. Do not ask which storage mode to use; carrier formats embed in-file
+   by default. Use `--no-embed` only when the user explicitly asks to keep originals byte-identical, avoid
+   file modifications, or use db-only storage:
    _"N files (M of them images/audio) aren't transcribed yet. Transcribing once makes later questions much
-   faster, and audio/scans only become searchable after. Transcribe (evidentiary originals via --no-embed)?"_
+   faster, and audio/scans only become searchable after. Transcribe them now?"_
 3. **Index:** `dnr index <folder>` — cheap incremental scan. Run it **after any transcribe and right
    before querying** (query returns the last index and does not re-hash, so a record isn't queryable until indexed).
 4. **Query** (no opening files): combine filters in one go — `dnr query <folder> --match "<text>"
@@ -68,10 +70,12 @@ say so briefly and continue using dnr in the current task.
   (id `dnr-verbatim-1`) — complete, no summarizing — then
   `dnr record <file> --transcript-file <t.md> --method vision --transcriber <your-model>`.
 - **Storage (no sidecar files).** Carrier formats (PDF/MP3/PNG/JPEG) embed the record **in-file** by
-  default — portable; this rewrites the file's bytes but the *content* is unchanged (`content_hash`
+  default — portable; do not ask about storage mode. This rewrites the file's bytes but the *content*
+  is unchanged (`content_hash`
   invariant). Non-carrier formats that still need transcription (docx, …) store a **db-only** record in
   the folder's `.dnr.db`. **Already-readable text (.txt/.md/.csv) gets no record at all — read it
-  directly.** For an original you must not modify (evidence), add **`--no-embed`** → db-only, file byte-identical.
+  directly.** Add **`--no-embed`** only if the user explicitly asks for byte-identical originals,
+  no file modifications, or db-only storage.
 - **Ask the user first before a *bulk* run** (many files / a whole folder). A single local `ingest`, or a
   one-off look to answer, needs no permission. A db-only record is queryable immediately; if the source
   changes later, the next `dnr index` removes it until re-ingested/re-recorded. An in-file record is

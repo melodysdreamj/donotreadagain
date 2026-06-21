@@ -374,7 +374,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pi.add_argument("file")
     pi.add_argument("--transcriber", default=None, help="override the local provider (text-extract, whisper)")
     pi.add_argument("--no-embed", action="store_true",
-                    help="store db-only (leave the original byte-identical; for evidentiary files)")
+                    help="store db-only (leave the original byte-identical; explicit no-modification mode)")
     pi.add_argument("--force", action="store_true", help="re-ingest even if a valid record exists")
     pi.set_defaults(fn=_cmd_ingest)
 
@@ -387,7 +387,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--lang")
     pr.add_argument("--tags", help="comma-separated tags")
     pr.add_argument("--no-embed", action="store_true",
-                    help="store db-only (leave the original byte-identical; for evidentiary files)")
+                    help="store db-only (leave the original byte-identical; explicit no-modification mode)")
     pr.set_defaults(fn=_cmd_record)
 
     prd = sub.add_parser("read", help="print the cached transcript if trusted, else fall back")
