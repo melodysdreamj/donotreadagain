@@ -428,6 +428,9 @@ def _cmd_init(args) -> int:
             print(f"{status} global agent bootstrap in {path}")
     if not args.agent_file and args.global_agent is None:
         print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
+    print("tell your agent: Use dnr for this folder.")
+    print("agent contract: dnr read before parsing; dnr index/query before opening folder hits;")
+    print("cache expensive misses with dnr ingest/record.")
     print(f"agents fetch the skill once from {bootstrap.SKILL_RAW_URL} (or run `dnr skill`).")
     return 0
 

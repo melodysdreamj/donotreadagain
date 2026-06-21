@@ -30,3 +30,4 @@ uv.lock.*
 *.tmp
 /scratch/
 /experiments/
+/.marketing/
