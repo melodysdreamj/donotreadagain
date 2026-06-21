@@ -8,16 +8,24 @@ def _isolated_home(tmp_path, monkeypatch):
 
 
 def test_ingest_text_extract(sample_pdf):
-    from dnr import embed, hashing, ingest, keyring, signing
+    from dnr import embed, hashing, index, ingest, keyring, signing
 
     rec = ingest.ingest(sample_pdf)  # transcriber auto-selected by type (.pdf -> text-extract)
     assert rec["provenance"]["method"] == "text-extract"
     assert rec["provenance"]["transcriber"] in {"pymupdf", "pypdf"}
     assert rec["content_hash"] == hashing.content_hash(sample_pdf)
     assert "sig" in rec
-    got = embed.extract(sample_pdf)
+    assert embed.extract(sample_pdf) is None
+    got = index.db_only_record(sample_pdf.parent, sample_pdf)
     assert got == rec
     assert signing.verify(got, keyring.default_trust())
+
+
+def test_ingest_embed_is_explicit_opt_in(sample_pdf):
+    from dnr import embed, ingest
+
+    rec = ingest.ingest(sample_pdf, embed=True)
+    assert embed.extract(sample_pdf) == rec
 
 
 def test_ingest_is_idempotent_no_drift(sample_pdf):

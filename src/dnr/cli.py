@@ -31,18 +31,19 @@ def _cmd_keygen(args) -> int:
 def _cmd_ingest(args) -> int:
     from . import ingest
 
+    embed_record = bool(getattr(args, "embed", False) and not getattr(args, "no_embed", False))
     if Path(args.file).is_dir():
-        stats = ingest.backfill(args.file, no_embed=args.no_embed, force=args.force, model=args.model)
+        stats = ingest.backfill(args.file, embed=embed_record, force=args.force, model=args.model)
         return _emit_backfill(args.file, stats, args.format or "plain")
 
-    rec = ingest.ingest(args.file, transcriber=args.transcriber, no_embed=args.no_embed,
+    rec = ingest.ingest(args.file, transcriber=args.transcriber, embed=embed_record,
                         force=args.force, model=args.model)
     if rec is None:
         print(f"{args.file}: already-readable text — no transcription or record needed (read it directly)")
         return 0
     p = rec["provenance"]
     from . import embed, transcribe
-    where = "in-file" if embed.has_carrier(args.file) and not args.no_embed else "db-only (index)"
+    where = "in-file" if embed.has_carrier(args.file) and embed_record else "db-only (index)"
     print(f"ingested {args.file}  [{where}]")
     print(f"  method={p['method']} transcriber={p['transcriber']}")
     print(f"  {rec['content_hash']}")
@@ -89,7 +90,8 @@ def _emit_backfill(folder, stats: dict, fmt: str = "plain") -> int:
 def _cmd_backfill(args) -> int:
     from . import ingest
 
-    stats = ingest.backfill(args.folder, no_embed=args.no_embed, force=args.force, model=args.model)
+    embed_record = bool(getattr(args, "embed", False) and not getattr(args, "no_embed", False))
+    stats = ingest.backfill(args.folder, embed=embed_record, force=args.force, model=args.model)
     return _emit_backfill(args.folder, stats, args.format or "plain")
 
 
@@ -101,10 +103,11 @@ def _cmd_record(args) -> int:
         print("dnr record: provide --transcript or --transcript-file", file=sys.stderr)
         return 2
     tags = [t.strip() for t in args.tags.split(",") if t.strip()] if args.tags else None
+    embed_record = bool(getattr(args, "embed", False) and not getattr(args, "no_embed", False))
     rec = ingest.record_supplied(args.file, text, args.method, args.transcriber,
-                                 lang=args.lang, tags=tags, no_embed=args.no_embed)
+                                 lang=args.lang, tags=tags, embed=embed_record)
     from . import embed
-    where = "in-file" if embed.has_carrier(args.file) and not args.no_embed else "db-only (index)"
+    where = "in-file" if embed.has_carrier(args.file) and embed_record else "db-only (index)"
     print(f"recorded {args.file}: method={args.method} [{where}] {rec['content_hash']}")
     return 0
 
@@ -131,11 +134,11 @@ def _cmd_verify(args) -> int:
 
     from . import embed, hashing, index, keyring, signing
 
-    rec = embed.extract(args.file)
-    where = "in-file"
-    if rec is None:  # not in the file? check for a db-only record in the folder index
-        rec = index.db_only_record(Path(args.file).parent, args.file)
-        where = "db-only"
+    rec = index.db_only_record(Path(args.file).parent, args.file)
+    where = "db-only"
+    if rec is None:
+        rec = embed.extract(args.file)
+        where = "in-file"
     if rec is None:
         print("no dnr record")
         return 1
@@ -388,9 +391,13 @@ def _cmd_strip(args) -> int:
 
 
 def _cmd_validate(args) -> int:
-    from . import embed, schema
+    from pathlib import Path
 
-    rec = embed.extract(args.file)
+    from . import embed, index, schema
+
+    rec = index.db_only_record(Path(args.file).parent, args.file)
+    if rec is None:
+        rec = embed.extract(args.file)
     if rec is None:
         print("no dnr record")
         return 1
@@ -422,11 +429,7 @@ def _cmd_init(args) -> int:
         for path in args.agent_file:
             status = bootstrap.install_agent_file(path)
             print(f"{status} agent bootstrap in {path}")
-    if args.global_agent is not None:
-        for path in bootstrap.global_agent_targets(args.global_agent):
-            status = bootstrap.install_global_agent_file(path)
-            print(f"{status} global agent bootstrap in {path}")
-    if not args.agent_file and args.global_agent is None:
+    if not args.agent_file:
         print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
     print("tell your agent: Use dnr for this folder.")
     print("agent contract: dnr read before parsing; dnr index/query before opening folder hits;")
@@ -451,13 +454,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("keygen", help="create/show the local signing key").set_defaults(fn=_cmd_keygen)
 
-    pi = sub.add_parser("ingest", help="transcribe (local, auto by type) + record + sign + embed")
+    pi = sub.add_parser("ingest", help="transcribe (local, auto by type) + record + sign into .dnr.db")
     pi.add_argument("file")
     pi.add_argument("--transcriber", default=None, help="override the local provider (text-extract, whisper)")
     pi.add_argument("--model", default=None,
                     help="Whisper model for audio ingest/backfill (default: small; e.g. base|small|medium)")
-    pi.add_argument("--no-embed", action="store_true",
-                    help="store db-only (leave the original byte-identical; explicit no-modification mode)")
+    pi.add_argument("--embed", action="store_true",
+                    help="opt in to writing the record into the file's metadata when supported")
+    pi.add_argument("--no-embed", action="store_true", help=argparse.SUPPRESS)
     pi.add_argument("--force", action="store_true", help="re-ingest even if a valid record exists")
     pi.add_argument("--format", choices=["plain", "json"], help="folder ingest output format")
     pi.set_defaults(fn=_cmd_ingest)
@@ -466,8 +470,9 @@ def _build_parser() -> argparse.ArgumentParser:
     pb.add_argument("folder")
     pb.add_argument("--model", default=None,
                     help="Whisper model for audio files (default: small; e.g. base|small|medium)")
-    pb.add_argument("--no-embed", action="store_true",
-                    help="store db-only (leave originals byte-identical; explicit no-modification mode)")
+    pb.add_argument("--embed", action="store_true",
+                    help="opt in to writing records into file metadata when supported")
+    pb.add_argument("--no-embed", action="store_true", help=argparse.SUPPRESS)
     pb.add_argument("--force", action="store_true", help="re-ingest even if valid records exist")
     pb.add_argument("--format", choices=["plain", "json"], help="output format")
     pb.set_defaults(fn=_cmd_backfill)
@@ -480,8 +485,9 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--transcriber", default="agent")
     pr.add_argument("--lang")
     pr.add_argument("--tags", help="comma-separated tags")
-    pr.add_argument("--no-embed", action="store_true",
-                    help="store db-only (leave the original byte-identical; explicit no-modification mode)")
+    pr.add_argument("--embed", action="store_true",
+                    help="opt in to writing the record into the file's metadata when supported")
+    pr.add_argument("--no-embed", action="store_true", help=argparse.SUPPRESS)
     pr.set_defaults(fn=_cmd_record)
 
     prd = sub.add_parser("read", help="print the cached transcript if trusted, else fall back")
@@ -544,11 +550,9 @@ def _build_parser() -> argparse.ArgumentParser:
     ptg.add_argument("--rm", help="comma-separated tags to remove")
     ptg.set_defaults(fn=_cmd_tag)
 
-    pin = sub.add_parser("init", help="ensure a signing key + optionally add an agent-file bootstrap")
+    pin = sub.add_parser("init", help="ensure a signing key + optionally add a local agent-file bootstrap")
     pin.add_argument("--agent-file", action="append", metavar="PATH",
                      help="append or upgrade the dnr bootstrap in AGENTS.md, CLAUDE.md, etc.; repeatable")
-    pin.add_argument("--global-agent", nargs="?", const="auto", metavar="TARGET",
-                     help="persist the global dnr habit to auto, codex, claude, all, or a markdown path")
     pin.set_defaults(fn=_cmd_init)
     sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 

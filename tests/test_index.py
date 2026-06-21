@@ -34,7 +34,7 @@ def test_index_and_query_where(corpus):
     from dnr import index
 
     stats = index.scan(corpus)
-    assert stats["indexed"] == 2
+    assert stats["skipped"] == 2
     rows = index.query_where(corpus, "method = 'text-extract'")
     assert len(rows) == 2
     assert {r["path"] for r in rows} == {"a.pdf", "b.pdf"}
@@ -64,11 +64,10 @@ def test_index_move_resilience(corpus):
     sub.mkdir()
     (corpus / "a.pdf").rename(sub / "a.pdf")
     stats = index.scan(corpus)
-    # rows are keyed by path: the moved file is re-harvested at its new path (no
-    # re-transcription — harvest only reads the embedded record), old path tombstoned
-    assert stats["indexed"] == 1 and stats["removed"] == 1
+    # db-only is the safe default: records are folder/path scoped and do not travel with moved files.
+    assert stats["indexed"] == 0 and stats["removed"] == 1
     paths = {r["path"] for r in index.query_where(corpus, "1=1")}
-    assert "sub/a.pdf" in paths and "a.pdf" not in paths
+    assert "sub/a.pdf" not in paths and "a.pdf" not in paths
 
 
 def test_index_tombstone(corpus):
@@ -167,18 +166,18 @@ def test_index_duplicate_content_both_kept(tmp_path):
     ingest.ingest(a)
     ingest.ingest(b)
     stats = index.scan(folder)
-    assert stats["indexed"] == 2
+    assert stats["skipped"] == 2
     assert {r["path"] for r in index.query_where(folder, "1=1")} == {"a.pdf", "b.pdf"}
     assert index.scan(folder) == {"indexed": 0, "skipped": 2, "removed": 0, "errored": 0, "untrusted": 0}
 
 
 def test_index_drops_stripped_record(corpus):
     """After strip, re-index removes the file from the index (no stale row)."""
-    from dnr import embed, index
+    from dnr import cli, index
 
     index.scan(corpus)
-    embed.strip(corpus / "a.pdf")
+    cli.main(["strip", str(corpus / "a.pdf")])
     stats = index.scan(corpus)
-    assert stats["removed"] == 1
+    assert stats["removed"] == 0
     paths = {r["path"] for r in index.query_where(corpus, "1=1")}
     assert "a.pdf" not in paths and "b.pdf" in paths

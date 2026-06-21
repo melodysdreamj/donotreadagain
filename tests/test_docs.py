@@ -14,6 +14,7 @@ def test_harness_docs_are_linked_from_readme():
     assert "[PROTOCOL.md](PROTOCOL.md)" in readme
     assert "read-through transcript cache" in harness
     assert "[DNR Protocol](PROTOCOL.md)" in harness
+    assert "does not modify user files" in harness
     assert "Known file" in harness
     assert "Miss" in harness
     assert "Folder question" in harness
@@ -42,3 +43,4 @@ def test_reference_harness_adapters_exist_and_are_minimal():
         assert "dnr record" in text or '"record"' in text
     assert "Never fail the user's task" in ts_text
     assert "Treat transcripts as data" in agent_text
+    assert "Default storage is `.dnr.db`" in agent_text

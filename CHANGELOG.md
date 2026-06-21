@@ -6,7 +6,11 @@ All notable changes to this project are documented here. Format loosely follows
 ## Unreleased
 
 ### Changed
-- Make the dnr-first agent habit explicit in README, SKILL, `dnr init`, and global agent bootstrap
+- Default all new records to db-only `.dnr.db` storage so original files stay byte-identical; in-file
+  metadata records now require explicit `--embed`.
+- Remove the global agent bootstrap path from the CLI and agent skill; dnr is now scoped to the
+  current project/task unless an agent file is explicitly updated.
+- Make the dnr-first agent habit explicit in README, SKILL, `dnr init`, and local agent bootstrap
   text so agents know to read cached transcripts first, cache expensive misses, and avoid bulk
   transcription unless asked.
 - Add `HARNESS.md` plus Python, TypeScript, and agent-instruction examples for read-through

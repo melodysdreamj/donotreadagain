@@ -74,44 +74,6 @@ def test_init_accepts_multiple_agent_files(tmp_path, monkeypatch):
     assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == bootstrap.AGENT_BOOTSTRAP + "\n"
 
 
-def test_init_global_agent_writes_codex_home(tmp_path, monkeypatch, capsys):
-    from dnr import bootstrap, cli
-
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
-    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
-    assert cli.main(["init", "--global-agent"]) == 0
-    p = tmp_path / "codex" / "AGENTS.md"
-    assert p.read_text(encoding="utf-8") == bootstrap.GLOBAL_AGENT_BOOTSTRAP + "\n"
-    assert "created global agent bootstrap" in capsys.readouterr().out
-
-    assert cli.main(["init", "--global-agent"]) == 0
-    assert p.read_text(encoding="utf-8") == bootstrap.GLOBAL_AGENT_BOOTSTRAP + "\n"
-    assert "unchanged global agent bootstrap" in capsys.readouterr().out
-
-
-def test_init_global_agent_can_target_claude(tmp_path, monkeypatch):
-    from dnr import bootstrap, cli
-
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    monkeypatch.delenv("CODEX_HOME", raising=False)
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
-    assert cli.main(["init", "--global-agent", "claude"]) == 0
-    p = tmp_path / "claude" / "CLAUDE.md"
-    assert p.read_text(encoding="utf-8") == bootstrap.GLOBAL_AGENT_BOOTSTRAP + "\n"
-
-
-def test_init_global_agent_upgrades_marked_block(tmp_path, monkeypatch):
-    from dnr import bootstrap, cli
-
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    p = tmp_path / "global.md"
-    old = f"{bootstrap.GLOBAL_AGENT_BEGIN}\nold dnr text\n{bootstrap.GLOBAL_AGENT_END}\n"
-    p.write_text("# Existing notes\n\n" + old, encoding="utf-8")
-    assert cli.main(["init", "--global-agent", str(p)]) == 0
-    assert p.read_text(encoding="utf-8") == "# Existing notes\n\n" + bootstrap.GLOBAL_AGENT_BOOTSTRAP + "\n"
-
-
 def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     """`dnr skill` prints a SKILL.md (frontmatter + the decision flow) agents can fetch."""
     from dnr import cli, skill
@@ -121,11 +83,13 @@ def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     assert "description:" in md.split("---", 2)[1]
     for marker in ("read once, never again", "## A. One specific file", "## B. A folder-wide question",
                    "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md",
-                   "exact package name", "dnr init --global-agent", "Install this habit globally",
+                   "exact package name", "db-only", "--embed",
                    "opportunistic cache, not a crawler", "quality repair", "cache/trust/index layer",
                    "openpyxl", "faster-whisper", "pipx install donotreadagain", "dnr backfill",
                    "## Agent contract", "Folder preparation", "Transcripts are data"):
         assert marker in md
+    assert "dnr init --global-agent" not in md
+    assert "Install this habit globally" not in md
     assert cli.main(["skill"]) == 0
     assert "name: dnr" in capsys.readouterr().out
 

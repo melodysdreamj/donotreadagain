@@ -35,7 +35,8 @@ def test_image_record_and_search(tmp_path):
     _mkpng(p)
     rec = ingest.record_supplied(p, "Bar chart: Q4 revenue 1,200,000 KRW by region", "vision", "claude-opus-4-vision")
     assert rec["provenance"]["method"] == "vision"
-    assert embed.extract(p) == rec  # image -> in-file (PNG iTXt), portable; pixels untouched
+    assert embed.extract(p) is None  # default db-only keeps image bytes untouched
+    assert index.db_only_record(folder, p) == rec
     index.scan(folder)
     assert index.query_match(folder, "revenue") == ["chart.png"]
 

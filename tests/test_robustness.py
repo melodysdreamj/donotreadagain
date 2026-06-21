@@ -37,7 +37,8 @@ def test_index_skips_corrupt_keeps_good(tmp_path):
     ingest.ingest(good)
 
     stats = index.scan(folder)  # must not abort on the corrupt file
-    assert stats["indexed"] == 1
+    assert stats["skipped"] == 1
+    assert stats["errored"] == 0
     paths = {r["path"] for r in index.query_where(folder, "1=1")}
     assert "good.pdf" in paths
 

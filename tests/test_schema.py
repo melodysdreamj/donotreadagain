@@ -7,10 +7,10 @@ def _isolated_home(tmp_path, monkeypatch):
 
 
 def test_real_record_validates(sample_pdf):
-    from dnr import embed, ingest, schema
+    from dnr import index, ingest, schema
 
     ingest.ingest(sample_pdf)
-    rec = embed.extract(sample_pdf)
+    rec = index.db_only_record(sample_pdf.parent, sample_pdf)
     assert schema.validate(rec) == []
 
 

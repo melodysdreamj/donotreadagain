@@ -1,6 +1,6 @@
 """Signing & trust (M3).
 
-An embedded record is untrusted by default. ``skip-reparse`` is unlocked only when
+A cached record is untrusted by default. ``skip-reparse`` is unlocked only when
 the record is signed by a trusted key AND its content_hash matches the file
 (vision.md §9). Ed25519: 64-byte signatures, 32-byte public keys.
 """

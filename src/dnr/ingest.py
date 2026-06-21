@@ -1,6 +1,6 @@
 """Ingest pipeline + consumer read (M4).
 
-`ingest`         : content_hash -> transcribe (local provider, auto by type) -> record -> sign -> embed.
+`ingest`         : content_hash -> transcribe (local provider, auto by type) -> record -> sign -> db-only.
 `record_supplied`: the **agent** path — the agent transcribes (following the guide) and supplies the text.
 `read_cached`    : consumer side — return the cached transcript iff a *trusted* record matches the file.
 
@@ -53,10 +53,11 @@ def make_record(path, transcript_text: str, provenance: dict, *,
 
 def _already_ours(path) -> dict | None:
     try:
-        rec = _embed.extract(path)
+        from . import index
+
+        rec = index.db_only_record(Path(path).parent, path)
         if rec is None:
-            from . import index
-            rec = index.db_only_record(Path(path).parent, path)
+            rec = _embed.extract(path)
         if rec is None or not signing.verify(rec, keyring.default_trust()):
             return None
         return rec if rec.get("content_hash") == hashing.content_hash(path) else None
@@ -64,14 +65,24 @@ def _already_ours(path) -> dict | None:
         return None
 
 
-def _sign_and_store(path, rec: dict, *, sign: bool = True, no_embed: bool = False) -> dict:
-    """Sign, then store the record **in-file** if the type has a carrier, else as a **db-only**
-    record in the folder index. No sidecars. ``no_embed`` forces db-only even for a carrier type
-    (leaves the original byte-identical — use when explicitly requested)."""
+def _want_embed(*, embed: bool = False, no_embed: bool | None = None) -> bool:
+    """Resolve new opt-in ``embed`` and legacy ``no_embed`` flags."""
+    if no_embed is not None:
+        return not no_embed
+    return embed
+
+
+def _sign_and_store(path, rec: dict, *, sign: bool = True, embed: bool = False,
+                    no_embed: bool | None = None) -> dict:
+    """Sign, then store the record in the folder index by default.
+
+    In-file embedding rewrites user files, so it is opt-in via ``embed=True``. Legacy callers can
+    still pass ``no_embed=False`` to request the old behavior.
+    """
     if sign:
         priv, pub = keyring.default_keypair()
         rec = signing.sign(rec, priv, pub)
-    if _embed.has_carrier(path) and not no_embed:
+    if _embed.has_carrier(path) and _want_embed(embed=embed, no_embed=no_embed):
         _embed.embed(path, rec)
     else:
         from . import index
@@ -80,7 +91,7 @@ def _sign_and_store(path, rec: dict, *, sign: bool = True, no_embed: bool = Fals
 
 
 def ingest(path, transcriber: str | None = None, *, sign: bool = True,
-           no_embed: bool = False, force: bool = False,
+           embed: bool = False, no_embed: bool | None = None, force: bool = False,
            model: str | None = None) -> dict | None:
     """Transcribe with a local provider (auto-selected by type), then record + sign + store.
 
@@ -112,10 +123,10 @@ def ingest(path, transcriber: str | None = None, *, sign: bool = True,
         prov["confidence"] = res.confidence
     rec = make_record(path, res.text, prov, lang=res.lang or transcribe.detect_lang(res.text),
                       segments=res.segments)
-    return _sign_and_store(path, rec, sign=sign, no_embed=no_embed)
+    return _sign_and_store(path, rec, sign=sign, embed=embed, no_embed=no_embed)
 
 
-def backfill(folder, *, no_embed: bool = False, force: bool = False,
+def backfill(folder, *, embed: bool = False, no_embed: bool | None = None, force: bool = False,
              model: str | None = None) -> dict:
     """Ingest a folder's locally processable files and return a machine-readable worklist.
 
@@ -155,7 +166,7 @@ def backfill(folder, *, no_embed: bool = False, force: bool = False,
             continue
         try:
             existed = _already_ours(p) is not None
-            rec = ingest(p, no_embed=no_embed, force=force, model=model)
+            rec = ingest(p, embed=embed, no_embed=no_embed, force=force, model=model)
             if rec is None:
                 stats["text"].append(r)
                 continue
@@ -179,7 +190,8 @@ def record_supplied(path, transcript_text: str, method: str = "vision",
                     transcriber: str = "agent", *, lang: str | None = None,
                     segments: list | None = None, tags: list | None = None,
                     fields: dict | None = None, sign: bool = True,
-                    no_embed: bool = False, follows_guide: bool = True) -> dict:
+                    embed: bool = False, no_embed: bool | None = None,
+                    follows_guide: bool = True) -> dict:
     """Record a transcript produced by the agent following the verbatim guide."""
     prov = (guide.provenance_stamp(method, transcriber)
             if follows_guide else {"method": method, "transcriber": transcriber})
@@ -189,7 +201,7 @@ def record_supplied(path, transcript_text: str, method: str = "vision",
     rec = make_record(path, transcript_text, prov,
                       lang=lang or transcribe.detect_lang(transcript_text),
                       segments=segments, fields=fields or None)
-    return _sign_and_store(path, rec, sign=sign, no_embed=no_embed)
+    return _sign_and_store(path, rec, sign=sign, embed=embed, no_embed=no_embed)
 
 
 def current_tags(path) -> list:
@@ -198,10 +210,11 @@ def current_tags(path) -> list:
 
 
 def _read_record(path) -> dict | None:
-    rec = _embed.extract(path)
+    from . import index
+
+    rec = index.db_only_record(Path(path).parent, path)
     if rec is None:
-        from . import index
-        rec = index.db_only_record(Path(path).parent, path)
+        rec = _embed.extract(path)
     return rec
 
 
@@ -221,9 +234,6 @@ def _edit_fields(path, mutate) -> dict:
     fields = rec.setdefault("fields", {})
     mutate(fields)
     _sign_and_store(path, rec)
-    if _embed.has_carrier(path):
-        from . import index
-        index.reindex_file(Path(path).parent, path)
     return fields
 
 
@@ -264,10 +274,11 @@ def read_cached(path, trust: dict | None = None) -> str | None:
     content_hash matches the file. Anything else -> None (read normally).
     """
     try:
-        rec = _embed.extract(path)
-        if rec is None:  # no in-file carrier? try a db-only record in the folder index
-            from . import index
-            rec = index.db_only_record(Path(path).parent, path)
+        from . import index
+
+        rec = index.db_only_record(Path(path).parent, path)
+        if rec is None:
+            rec = _embed.extract(path)
         if rec is None:
             return None
         trust = keyring.default_trust() if trust is None else trust

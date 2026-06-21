@@ -68,13 +68,14 @@ redaction, citation, and provenance boundaries.
 
 ## Storage
 
-Preferred storage is the file's own metadata carrier, so the transcript travels with the file.
-Examples include PDF XMP, MP3 ID3, MP4/M4A freeform atoms, Vorbis/Opus comments, PNG iTXt, and
-JPEG APP segments.
+Preferred storage is db-only in the folder's `.dnr.db`, so original files stay byte-identical.
+This is the default path for harness integrations and conservative workflows.
 
-When a format has no suitable carrier, or when originals must remain byte-identical, records may
-be db-only in the folder's `.dnr.db`. The index is a derived cache for search and discovery; files
-remain the canonical truth for embedded records.
+When portability matters more than avoiding file modification, a producer may explicitly embed a
+record in the file's own metadata carrier. Examples include PDF XMP, MP3 ID3, MP4/M4A freeform
+atoms, Vorbis/Opus comments, PNG iTXt, and JPEG APP segments. In-file records are opt-in because
+they rewrite file bytes. The index is the default cache for search and discovery; files remain the
+canonical content truth.
 
 ## Folder behavior
 

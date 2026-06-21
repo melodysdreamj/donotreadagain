@@ -7,6 +7,9 @@ The portable contract is the [DNR Protocol](PROTOCOL.md). The `dnr` CLI is the r
 implementation and the easiest integration path: call it when available, soft-miss when it is
 absent, and keep the harness's existing behavior unchanged.
 
+By default, dnr writes only the folder's `.dnr.db` cache. It does not modify user files unless a
+caller explicitly opts into portable in-file records with `--embed`.
+
 ## Contract
 
 1. **Known file:** before parsing an expensive file, run `dnr read <file>`.
@@ -65,6 +68,7 @@ Rules:
 - A missing dnr binary must be a soft miss. Continue with the normal reader.
 - A failed `dnr read` is a soft miss. Continue with the normal reader.
 - A failed cache write must not fail the user task.
+- Default cache writes must not modify user files; use `--embed` only on explicit user request.
 - Only write a record for text the harness actually produced while answering the current task.
 - For born-digital PDF/DOCX/XLSX/audio, prefer `dnr ingest <file>` when local extraction is enough.
 - For scans, screenshots, images, or video frames, the harness supplies the transcript and uses
