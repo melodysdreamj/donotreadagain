@@ -4,6 +4,15 @@
 
 [![ci](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml/badge.svg)](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/donotreadagain)](https://pypi.org/project/donotreadagain/) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml) · status: v0.2 early release
 
+**Tell your agent:**
+
+```text
+Use dnr for this folder.
+```
+
+That one line is the adoption path. The agent fetches **[SKILL.md](SKILL.md)**, checks cached
+transcripts before parsing files, and records any expensive read it had to do anyway.
+
 ---
 
 ## The problem
@@ -22,6 +31,18 @@ The second view is the win:
 | image / scan / audio | a vision / Whisper model call | a few ms of text — **no model at all** |
 
 …and the cache is **trustworthy**: a record is used only if it's signed by a trusted key *and* its `content_hash` still matches the file, so "fast" never means "stale or forged."
+
+## Agent contract
+
+For agents and harnesses, dnr is a small pre-read loop:
+
+1. **Known file:** run `dnr read <file>` before parsing it. If stdout has text, use it and do not re-read.
+2. **Miss:** if the task still needs the file, parse/look/listen once, then cache that result with `dnr ingest` or `dnr record`.
+3. **Folder question:** run `dnr index <folder>`, then `dnr query <folder> ...` before opening files.
+4. **Folder preparation:** use `dnr status <folder> --pending`; run `dnr backfill <folder>` only when the user wants a folder pass.
+5. **Boundary:** never bulk-transcribe just because files are pending; only cache work the task actually needs.
+
+Harness maintainers can copy the integration contract and reference adapters from **[HARNESS.md](HARNESS.md)**.
 
 ## Demo
 
@@ -112,7 +133,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 - **Transcribe (producer):** `dnr ingest` (local: PyMuPDF→pypdf / python-docx / openpyxl / optional faster-whisper) or `dnr record` (agent supplies a vision/OCR transcript). dnr is an opportunistic cache: do this when the current task already requires reading/parsing that file, not just because a folder has pending files. If a needed file's cached transcript is empty/garbled/unusable, repair that file immediately; ask only before expanding into whole-folder OCR/searchability work.
 - **Backfill a folder:** `dnr backfill <folder>` (also `dnr ingest <folder>`) ingests locally-processable files in one pass, skips already-readable text, and prints a worklist for images/scans/videos or low-quality results that need agent/vision repair.
 - **Query a folder:** `dnr query <folder>` combines `--match` (FTS, Korean/CJK ok) ∩ `--tag a,b` ∩ `--since/--until` ∩ restricted `--where` over fixed columns; plus `--any` (OR sweep), `--dedup`, `--context` (KWIC), `--format json`. Save composed queries with `--save`/`--use`; accumulate labels with `dnr tag`.
-- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. Recommended install is `pipx install donotreadagain`; one-off fallback is `uvx --from donotreadagain dnr ...`. `dnr init` just ensures a signing key by default; to persist the bootstrap in an agent instruction file, run `dnr init --agent-file AGENTS.md` (or `--agent-file CLAUDE.md`). To make dnr a global agent habit, run `dnr init --global-agent`; the skill asks agents to do this on first use when supported.
+- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. Recommended install is `pipx install donotreadagain`; one-off fallback is `uvx --from donotreadagain dnr ...`. `dnr init` just ensures a signing key by default; to persist the bootstrap in an agent instruction file, run `dnr init --agent-file AGENTS.md` (or `--agent-file CLAUDE.md`). To make dnr a global agent habit, run `dnr init --global-agent`; the skill asks agents to do this on first use when supported. Harness authors can integrate the same read-through cache hook with **[HARNESS.md](HARNESS.md)**.
 
 ## Design principles
 
@@ -127,9 +148,9 @@ v0.2 early release. Published on PyPI as `donotreadagain`; the recommended path 
 - **`trusted ≠ faithful`.** A signature proves *who made it + that it matches the file*, not that the transcription is accurate. Low-quality/garbled transcripts are flagged (`dnr status`), not silently trusted.
 - **Coverage is still growing.** PDF/PNG/JPEG/HEIC/DOCX/XLSX and common audio containers are useful today; OOXML in-file carriers, more video containers, pre-query auto-scan, and larger-corpus concurrency are still roadmap work.
 - **Benchmarks are early.** The README numbers are illustrative dogfood timings; see [BENCHMARKS.md](BENCHMARKS.md) and [experiments/content-hash-invariance](experiments/content-hash-invariance) for the current proof/measurement status. A broader latency/token benchmark remains a release-readiness item.
-- **Python is currently required.** Use `pipx` for the cleanest install; a standalone binary for Python-less environments is future work.
+- **Python packaging is the product path.** Use `pipx` for the cleanest install; `uvx` remains the one-off/fallback route.
 
-See **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
+See **[HARNESS.md](HARNESS.md)** (harness integration) · **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
 
 ## Development
 

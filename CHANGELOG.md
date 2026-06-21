@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- Make the dnr-first agent habit explicit in README, SKILL, `dnr init`, and global agent bootstrap
+  text so agents know to read cached transcripts first, cache expensive misses, and avoid bulk
+  transcription unless asked.
+- Add `HARNESS.md` plus Python, TypeScript, and agent-instruction examples for read-through
+  transcript cache integrations.
+
 ## 0.2.2 - 2026-06-21
 
 ### Fixed

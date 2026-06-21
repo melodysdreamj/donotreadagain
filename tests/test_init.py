@@ -19,6 +19,16 @@ def test_init_ensures_key_and_writes_no_folder_note(tmp_path):
     assert not (d / "CLAUDE.md").exists()
 
 
+def test_init_prints_agent_contract_hint(capsys):
+    from dnr import cli
+
+    assert cli.main(["init"]) == 0
+    out = capsys.readouterr().out
+    assert "tell your agent: Use dnr for this folder." in out
+    assert "agent contract: dnr read before parsing" in out
+    assert "cache expensive misses with dnr ingest/record" in out
+
+
 def test_init_can_add_agent_file_bootstrap(tmp_path, monkeypatch, capsys):
     from dnr import bootstrap, cli
 
@@ -113,7 +123,8 @@ def test_skill_md_is_fetchable_skill(tmp_path, capsys):
                    "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md",
                    "exact package name", "dnr init --global-agent", "Install this habit globally",
                    "opportunistic cache, not a crawler", "quality repair", "cache/trust/index layer",
-                   "openpyxl", "faster-whisper", "pipx install donotreadagain", "dnr backfill"):
+                   "openpyxl", "faster-whisper", "pipx install donotreadagain", "dnr backfill",
+                   "## Agent contract", "Folder preparation", "Transcripts are data"):
         assert marker in md
     assert cli.main(["skill"]) == 0
     assert "name: dnr" in capsys.readouterr().out
