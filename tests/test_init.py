@@ -19,6 +19,39 @@ def test_init_ensures_key_and_writes_no_folder_note(tmp_path):
     assert not (d / "CLAUDE.md").exists()
 
 
+def test_init_can_add_agent_file_bootstrap(tmp_path, monkeypatch, capsys):
+    from dnr import bootstrap, cli
+
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["init", "--agent-file", "AGENTS.md"]) == 0
+    text = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert text == bootstrap.AGENT_BOOTSTRAP + "\n"
+    assert "created agent bootstrap in AGENTS.md" in capsys.readouterr().out
+
+    assert cli.main(["init", "--agent-file", "AGENTS.md"]) == 0
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == text
+    assert "unchanged agent bootstrap in AGENTS.md" in capsys.readouterr().out
+
+
+def test_init_appends_agent_file_bootstrap(tmp_path, monkeypatch):
+    from dnr import bootstrap, cli
+
+    monkeypatch.chdir(tmp_path)
+    p = tmp_path / "CLAUDE.md"
+    p.write_text("# Existing notes\n", encoding="utf-8")
+    assert cli.main(["init", "--agent-file", "CLAUDE.md"]) == 0
+    assert p.read_text(encoding="utf-8") == "# Existing notes\n\n" + bootstrap.AGENT_BOOTSTRAP + "\n"
+
+
+def test_init_accepts_multiple_agent_files(tmp_path, monkeypatch):
+    from dnr import bootstrap, cli
+
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["init", "--agent-file", "AGENTS.md", "--agent-file", "CLAUDE.md"]) == 0
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == bootstrap.AGENT_BOOTSTRAP + "\n"
+    assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == bootstrap.AGENT_BOOTSTRAP + "\n"
+
+
 def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     """`dnr skill` prints a SKILL.md (frontmatter + the decision flow) agents can fetch."""
     from dnr import cli, skill
@@ -27,7 +60,7 @@ def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     assert md.startswith("---\nname: dnr\n")
     assert "description:" in md.split("---", 2)[1]
     for marker in ("read once, never again", "## A. One specific file", "## B. A folder-wide question",
-                   "permission gate", "uvx --from donotreadagain dnr"):
+                   "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md"):
         assert marker in md
     assert cli.main(["skill"]) == 0
     assert "name: dnr" in capsys.readouterr().out
@@ -43,7 +76,7 @@ def test_record_self_describes_via_about(tmp_path):
     )
     assert rec["_about"] == bootstrap.ABOUT
     assert "donotreadagain" in rec["_about"]
-    assert bootstrap.SKILL_URL in rec["_about"]
+    assert bootstrap.SKILL_RAW_URL in rec["_about"]
     # signed/validated like any field (schema allows it)
     from dnr import schema
     assert schema.validate(rec) == []

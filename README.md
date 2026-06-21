@@ -102,7 +102,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 - **Read (consumer):** `dnr read <file>` returns the cached transcript only if it's present, trusted, and still matches (self-validating — a changed file silently misses). No dnr tool? An agent can read `.dnr.db` directly with ambient `sqlite3` (the db's `_dnr_readme` table self-describes).
 - **Transcribe (producer):** `dnr ingest` (local: pypdf / Whisper / python-docx) or `dnr record` (agent supplies a vision transcript). dnr **owns no model** — the transcript is an input from whoever's best placed.
 - **Query a folder:** `dnr query <folder>` combines `--match` (FTS, Korean/CJK ok) ∩ `--tag a,b` ∩ `--since/--until` ∩ restricted `--where` over fixed columns; plus `--any` (OR sweep), `--dedup`, `--context` (KWIC), `--format json`. Save composed queries with `--save`/`--use`; accumulate labels with `dnr tag`.
-- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. `dnr init` just ensures a signing key; nothing is written into your folders.
+- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. `dnr init` just ensures a signing key by default; to persist the one-line bootstrap in an agent instruction file, run `dnr init --agent-file AGENTS.md` (or `--agent-file CLAUDE.md`).
 
 ## Design principles
 

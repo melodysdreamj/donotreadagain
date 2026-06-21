@@ -340,8 +340,13 @@ def _cmd_init(args) -> int:
 
     _, pub = keyring.default_keypair()  # ensure a signing key exists
     print(f"dnr ready · signing key_id={signing.key_id(pub)}")
-    print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
-    print(f"agents fetch the skill once from {bootstrap.SKILL_URL}  (or run `dnr skill`).")
+    if args.agent_file:
+        for path in args.agent_file:
+            status = bootstrap.install_agent_file(path)
+            print(f"{status} agent bootstrap in {path}")
+    else:
+        print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
+    print(f"agents fetch the skill once from {bootstrap.SKILL_RAW_URL} (or run `dnr skill`).")
     return 0
 
 
@@ -438,7 +443,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ptg.add_argument("--rm", help="comma-separated tags to remove")
     ptg.set_defaults(fn=_cmd_tag)
 
-    sub.add_parser("init", help="ensure a signing key + show where agents fetch the skill").set_defaults(fn=_cmd_init)
+    pin = sub.add_parser("init", help="ensure a signing key + optionally add an agent-file bootstrap")
+    pin.add_argument("--agent-file", action="append", metavar="PATH",
+                     help="append the one-line dnr bootstrap to AGENTS.md, CLAUDE.md, etc.; repeatable")
+    pin.set_defaults(fn=_cmd_init)
     sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 
     ps = sub.add_parser("strip", help="remove the dnr record before sharing")
