@@ -103,7 +103,7 @@ def read_with_dnr_cache(
 
 
 def query_folder(folder: str | Path, *query_args: str) -> str | None:
-    """Index, then query cached folder knowledge. Returns stdout or None on soft miss."""
+    """Index, then query cached folder transcripts. Returns stdout or None on soft miss."""
     _run(["index", str(Path(folder))])
     result = _run(["query", str(Path(folder)), *query_args])
     if result is None or result.returncode != 0:

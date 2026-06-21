@@ -1,9 +1,9 @@
 # Harness integration
 
-dnr is meant to be a small read-through transcript cache hook for agent harnesses.
+dnr is meant to be a small read-through transcript cache hook for source files in agent harnesses.
 It should not change a harness's core parser, model routing, or user approval policy.
 
-The portable contract is the [DNR Protocol](PROTOCOL.md). The `dnr` CLI is the reference
+The portable contract is the [DNR Transcript Cache Protocol](PROTOCOL.md). The `dnr` CLI is the reference
 implementation and the easiest integration path: call it when available, soft-miss when it is
 absent, and keep the harness's existing behavior unchanged.
 

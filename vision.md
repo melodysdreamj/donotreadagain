@@ -1,6 +1,6 @@
 # donotreadagain (dnr)
 
-> **Read once, never again.** Transcribe an expensive file once, then write the result into the file itself — a self-describing-file spec + thin tool so AI agents never re-parse the same file.
+> **Read once, never again.** Transcribe an expensive source file once, then cache a signed transcript so AI agents never re-parse the same file.
 
 This is the dnr **vision / design document**. The formal spec (`spec/dnr-0.1.md`) and the implementation derive from it.
 
@@ -8,25 +8,25 @@ This is the dnr **vision / design document**. The formal spec (`spec/dnr-0.1.md`
 
 ## 0. TL;DR
 
-Take an expensive-to-read file (PDF, audio, video, image, office), **transcribe it once, faithfully**, and **embed that transcript + metadata into the file's own native metadata slot as a unified, signed JSON record.** The file becomes "self-describing": any agent that opens it uses the transcript directly instead of re-parsing. A per-folder **regenerable index** (`.dnr.db`) backs cross-file queries.
+Take an expensive-to-read file (PDF, audio, video, image, office), **transcribe it once, faithfully**, and store that transcript + metadata as a unified, signed JSON record. The default record store is the folder's `.dnr.db`, so original files stay byte-identical. Optional in-file records remain available when portability is explicitly more important than avoiding file modification. A per-folder **regenerable index** (`.dnr.db`) backs cross-file queries.
 
-- **File = canonical truth** (location-independent, signed)
-- **Index = derived cache** (regenerable anytime)
-- **No-install consumption**: an AI just reads with `sqlite3` / `exiftool`; only production (transcribe + embed) runs on demand via `uvx`.
+- **File = canonical source** (content truth)
+- **`.dnr.db` = default transcript cache + index** (signed, queryable, regenerable)
+- **No-install consumption**: an AI can read the cache with `sqlite3`; production uses the CLI on demand.
 
 ---
 
 ## 1. The problem (Why)
 
-An AI harness re-runs OCR / transcription every time it reads the same PDF or audio file — a waste of time, tokens, and money. Transcription is deterministic work, so it should be **done once and cached**. Existing caches keep the result in an external store only; dnr **carries the result in the file itself**, so the file describes itself wherever it goes.
+An AI harness re-runs OCR / transcription every time it reads the same PDF or audio file — a waste of time, tokens, and money. Transcription is deterministic work, so it should be **done once and cached**. dnr makes that cache verifiable, queryable, and safe to use without asking harnesses to mutate user files by default.
 
 ---
 
-## 2. The core idea — self-describing files
+## 2. The core idea — verified source-file transcripts
 
 1. Transcribe the file once (verbatim, see §8).
 2. Pack the transcript + provenance + queryable fields + a signature into **a single JSON record**.
-3. Embed that record into the **file's native metadata slot** (PDF→XMP, mp3→ID3, …).
+3. Store that record in the folder `.dnr.db` by default; optionally embed it in the file's native metadata slot when requested.
 4. A consumer (AI) checks for the record first; **if it verifies, it uses the transcript as-is and skips re-parsing.**
 5. Indexing a folder collects the records into a queryable table.
 
@@ -35,21 +35,20 @@ An AI harness re-runs OCR / transcription every time it reads the same PDF or au
 ## 3. Architecture — two layers
 
 ```
-File (canonical truth, location-independent)   Index .dnr.db (derived, regenerable)
+File (canonical source)                        Index .dnr.db (default cache)
 ┌────────────────────────────┐                ┌──────────────────────────────┐
-│ dnr record (XMP/ID3 slot)   │   harvest      │ core columns + fields/extras   │
-│  content_hash, transcript,  │ ─────────────▶ │ + path, whole_hash, mtime      │
-│  provenance, fields, sig    │                │ + FTS5 (full-text)             │
+│ original file bytes         │   hash/read     │ signed records + fields/extras │
+│ content identity            │ ─────────────▶  │ + path, mtime + FTS5 search    │
 └────────────────────────────┘                └──────────────────────────────┘
-   ▲ expensive: transcribe·embed·sign once       ▲ cheap: regenerate anytime
-   producer (uvx, once)                           consumer = AI (sqlite3, no install)
+   ▲ expensive: transcribe once                  ▲ cheap: query/read later
+   producer (CLI, once)                           consumer = AI/harness
 ```
 
-**Division of labor — the file holds "content facts" only; the index holds "location / catalog facts" only.**
+**Division of labor — the file remains the source of truth; `.dnr.db` holds transcript/cache facts.**
 
 | Info | Where | Why |
 |---|---|---|
-| content_hash, transcript, provenance, fields, sig | **file + index** | true wherever it lives (location-independent) |
+| content_hash, transcript, provenance, fields, sig | **`.dnr.db` by default; optional file carrier** | verified transcript cache |
 | path | **index only** | changes on move (if the file held its own location, every move would rewrite it) |
 | whole_hash | **index only** | hash of the whole file bytes — can't store a hash of itself inside itself (chicken-and-egg) |
 | mtime, indexed_at | **index only** | filesystem / catalog bookkeeping |
@@ -58,7 +57,7 @@ Test: *"If I emailed this file with no index, should this fact travel with it?"*
 
 ---
 
-## 4. Record schema (what's embedded in the file)
+## 4. Record schema
 
 ```jsonc
 {
@@ -102,13 +101,15 @@ Test: *"If I emailed this file with no index, should this fact travel with it?"*
 
 - `path` and `whole_hash` are **not here** (index only, §3).
 - `transcript` (verbatim & complete) and `fields.summary` (lossy summary) are **never conflated** (§8).
-- **Already-text files** (txt/csv/json/md) omit `transcript` and use `method: "none"` (no transcription). Only `fields` is filled, via a sidecar, to join the index; the body is read directly from the original by the index (§15).
+- **Already-text files** (txt/csv/json/md) get no transcript record by default; the agent reads them directly.
 
 ---
 
-## 5. Carrier mapping — one JSON, N slots
+## 5. Optional in-file carrier mapping
 
-The same JSON record is stored as a string in each format's **dedicated third-party slot**. A unique key (`dnr`) avoids clashing with native tags.
+The same JSON record can be stored in each format's **dedicated third-party slot** when the user
+explicitly opts into `--embed`. A unique key (`dnr`) avoids clashing with native tags. Without
+`--embed`, the record stays in `.dnr.db`.
 
 | Format | canonical slot |
 |---|---|
@@ -117,7 +118,7 @@ The same JSON record is stored as a string in each format's **dedicated third-pa
 | FLAC · OGG | Vorbis comment `DNR=` |
 | M4A | MP4 atom |
 | docx · xlsx · pptx | OOXML custom XML part |
-| no slot · unwritable · oversized · sensitive | **sidecar** `<file>.dnr.json` |
+| no slot · unwritable · oversized · sensitive | db-only `.dnr.db` |
 
 The indexer parses the record as *the same JSON regardless of where it was extracted from*.
 
@@ -295,11 +296,11 @@ SELECT path FROM dnr WHERE json_extract(fields,'$.start_date') > '2024-01-01';
 
 ---
 
-## 13. Three non-negotiable safety items (mandatory once you choose embedding)
+## 13. Three non-negotiable safety items
 
 1. **Signing** — unsigned records can't unlock skip-reparse (§9).
-2. **Atomic writes** — never modify the original in place. Write to a copy → verify content_hash unchanged + native tags preserved → swap in via temp+fsync+rename.
-3. **Sidecar fallback** — oversized (large transcript), signed/read-only, confidential/evidentiary, or social-re-encoding-path files use `.dnr.json` instead of embedding.
+2. **Originals untouched by default** — `.dnr.db` is the normal write path.
+3. **Atomic optional embedding** — if `--embed` is explicitly chosen, write to a copy → verify content_hash unchanged + native tags preserved → swap in via temp+fsync+rename.
 
 ---
 
@@ -309,13 +310,13 @@ SELECT path FROM dnr WHERE json_extract(fields,'$.start_date') > '2024-01-01';
 |---|---|
 | content_hash non-deterministic via raw bytes on PDF/OOXML | **decoded-content hash + conformance gate** (§6, §16) |
 | unsigned record = prompt-injection · forgery · TOFU poisoning | **Ed25519 signing + untrusted-by-default** (§9) |
-| embed vs plain cache: low marginal value at n=1 | embedding is a bet on *self-description · portability · standard* ambition. Immediate value comes from the index/cache; the differentiator is in-file — carry both |
-| AI summary/entity leakage on share / mutating legal originals | **sidecar default (risky files) + sensitivity flag + strip command** |
-| adoption cold-start; OKF shipped a similar framing first | **single-user tool first**; co-emit OKF sidecars to coexist |
+| embed vs plain cache: low marginal value at n=1 | default to db-only cache; make in-file records explicit opt-in for portability |
+| AI summary/entity leakage on share / mutating legal originals | db-only default + explicit `--embed` + strip command |
+| adoption cold-start; adjacent knowledge-format projects create confusion | keep the pitch narrow: verified transcripts for source files, not a general knowledge base |
 | write (transcription) cost + transcriber_version re-transcribe tax | one-time · cached + per-`method` precise re-transcribe (text-extract is exempt) |
-| verbatim transcript = large payload | sidecar fallback absorbs it (§13) |
+| verbatim transcript = large payload | db-only cache absorbs it without rewriting the source file (§13) |
 
-> The audit recommended "cache first, defer embedding," but for the **self-describing-file standard** vision we choose embed-first — while solving the prerequisites the audit set (canonical hash + signing) **first**.
+> The current product path is cache first: db-only by default, optional embedding only when portability is explicitly worth the file-byte change.
 
 ---
 
@@ -325,15 +326,15 @@ dnr delivers **two separable values** — the scope per file differs:
 1. **Transcription cache** (read the expensive thing once) — media only.
 2. **Derived fields + unified index** (search/route by title/summary/tags/date) — useful for all files.
 
-| File kind | Transcription | Joins index | Carrier |
+| File kind | Transcription | Joins index | Default record store |
 |---|---|---|---|
-| PDF · audio · video · image | ✅ verbatim | ✅ | in-file (or sidecar) |
-| txt · csv · json · md (small) | ❌ `method:"none"` | ✅ fields-only | **sidecar only** (body read from the original) |
-| large CSV/JSON/logs | ❌ | ✅ **summary + schema only** | sidecar (body handled by code/pandas) |
+| PDF · audio · video · image | ✅ verbatim | ✅ | `.dnr.db`; optional in-file with `--embed` |
+| txt · csv · json · md (small) | ❌ | ❌ by default | read directly |
+| large CSV/JSON/logs | ❌ | planned summaries/schemas | `.dnr.db` if explicitly recorded |
 
 **Out of scope:**
-- **No body copying** — don't copy an already-text file's body into the sidecar (duplication / sync risk). The index reads it straight from the original.
-- **Signed / read-only files** — no mutation → sidecar or excluded.
+- **No body copying** — don't copy an already-text file's body into a record (duplication / sync risk). Read it straight from the original.
+- **Signed / read-only files** — no mutation → db-only or excluded.
 - **Social / email re-encoding transport** — metadata stripping → can't trust in-file. dnr is trusted over blob-preserving transport (git/rsync/S3/NAS).
 
 > Text-file support is a *uniformity bonus*, not the core (re-parsing expensive media) → **opt-in, later**. Add it after the media path is solid.
@@ -352,7 +353,7 @@ Audit conclusion: until the below is frozen, everything else is unstable. **This
 3. `embed` is **atomic** (temp+fsync+rename)
 4. `embed` is **byte-deterministic** — `deterministic_id` + suppressed auto-timestamps keep whole_hash stable on re-embed (prevents re-index churn)
 
-Targets: **PDF + mp3** first. Passing these technically rescues embed-first.
+Targets: **PDF + mp3** first. Passing these technically proves the optional in-file path.
 
 ### 🔬 make-or-break experiment (first code)
 ```
@@ -365,7 +366,7 @@ Directly validates the audit's #1 doubt (PDF non-determinism). Holds → pillar 
 **Result (2026-06-20) — ✅ MAKE.** (`experiments/content-hash-invariance/`) PDF content_hash stayed **invariant** across default·object_streams·linearize·recompress·`normalize_content` (only whole_hash changed); the WAV audio payload was invariant under an ID3 write too. Finding: the default embed drifts whole_hash via a random `/ID` + `MetadataDate` → a **deterministic embed recipe** (`pikepdf.save(deterministic_id=True)` + `open_metadata(set_pikepdf_as_editor=False)` + deleting dates) makes re-embed byte-identical. → that is where gate 4 came from. Follow-ups remaining: real scanned PDF (image/JBIG2), multi-MB transcript, real mp3.
 
 ### After that
-Index/FTS query → enforced `dnr read` CLI (protocol from prose → code) → format expansion → optional MCP / OKF emit.
+Index/FTS query → enforced `dnr read` CLI (protocol from prose → code) → format expansion → optional MCP / curated export.
 
 ---
 
@@ -379,5 +380,5 @@ Index/FTS query → enforced `dnr read` CLI (protocol from prose → code) → f
 
 - **digiKam** — embed + local SQLite index + incremental. But photos only, no AI transcription. dnr = "digiKam generalized to all media + AI transcription as the payload."
 - **C2PA** — cross-format in-file structured assertions. But for authenticity/signing, query-agnostic, hard-bound (breaks on edit). dnr = edit-tolerant · query-first.
-- **Google OKF** (2026-06) — agent-knowledge sidecars (md + YAML). But not in-file, no media transcription. dnr = in-file + media transcription.
-- **Framedex** — video sidecars + index. But sidecar only, video/photos only.
+- **Curated knowledge bundles** — good for hand-written context, runbooks, and semantic summaries. dnr is lower-level: verified transcripts tied to concrete source files.
+- **Video sidecar/index tools** — useful for one media family. dnr is broader and source-file-hash verified.

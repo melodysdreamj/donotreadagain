@@ -13,8 +13,9 @@ Use dnr for this folder.
 That one line is the adoption path. The agent fetches **[SKILL.md](SKILL.md)**, checks cached
 transcripts before parsing files, and records any expensive read it had to do anyway.
 
-dnr is both a **reference CLI implementation** and a small **[DNR Protocol](PROTOCOL.md)** for
-verified transcript records. Harnesses can call the CLI today or implement compatible records
+dnr is both a **reference CLI implementation** and a small
+**[source-file transcript cache protocol](PROTOCOL.md)** for verified transcript records.
+Harnesses can call the CLI today or implement compatible records
 natively later.
 
 ---
@@ -25,8 +26,9 @@ AI agents re-parse the same file *every time they touch it* — re-OCR a scan, r
 
 ## The idea
 
-dnr is the **cache/trust/index layer** for expensive reads and the reference implementation of
-the **[DNR Protocol](PROTOCOL.md)**. A local extractor, local ASR model, or the calling AI agent
+dnr is the **cache/trust/index layer** for expensive source-file reads and the reference
+implementation of the **[DNR transcript cache protocol](PROTOCOL.md)**. A local extractor,
+local ASR model, or the calling AI agent
 reads a file once; dnr stores the resulting transcript + structured metadata as a *signed* JSON
 record in a folder `.dnr.db` by default, so original files stay byte-identical. Any agent that
 opens it later reads the cached transcript instead of re-parsing. A per-folder SQLite + FTS5
@@ -149,10 +151,13 @@ File = canonical truth                    Index .dnr.db = default cache
 
 ## Design principles
 
-- **Protocol first, CLI as proof.** The DNR Protocol is the portable contract; `dnr` is the
+- **Protocol first, CLI as proof.** The DNR transcript cache protocol is the portable contract; `dnr` is the
   reference implementation that proves it works and gives harnesses an optional hook today.
 - **Original files stay untouched by default.** The default write path is `.dnr.db`; in-file records
   require explicit `--embed`.
+- **Not a general knowledge format.** dnr stores faithful transcripts tied to original files.
+  Curated concepts, runbooks, summaries, and knowledge-base pages belong in higher-level docs;
+  dnr can feed those systems, but it is not trying to replace them.
 - **dnr is the deterministic substrate; the agent is the intelligence.** dnr does verifiable primitives (hash, sign, full-text/structured query); it never *infers* metadata (dates, parties, topics) or does fuzzy semantic search — that's the agent's job. Set metadata explicitly with `dnr tag` / `dnr date`.
 - **File = truth, index = regenerable cache.** Delete `.dnr.db` and rebuild it from the files anytime.
 - **Transcriber-agnostic.** dnr ships a *contract* (the verbatim guide) + a *trust layer*, not a model. Fidelity is the transcriber's; provenance is recorded so a consumer can apply its own quality policy (`trusted ≠ faithful`).
@@ -166,7 +171,7 @@ v0.2 early release. Published on PyPI as `donotreadagain`; the recommended path 
 - **Benchmarks are early.** The README numbers are illustrative dogfood timings; see [BENCHMARKS.md](BENCHMARKS.md) and [experiments/content-hash-invariance](experiments/content-hash-invariance) for the current proof/measurement status. A broader latency/token benchmark remains a release-readiness item.
 - **Python packaging is the product path.** Use `pipx` for the cleanest install; `uvx` remains the one-off/fallback route.
 
-See **[PROTOCOL.md](PROTOCOL.md)** (portable protocol) · **[HARNESS.md](HARNESS.md)** (harness integration) · **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (record spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
+See **[PROTOCOL.md](PROTOCOL.md)** (portable transcript-cache protocol) · **[HARNESS.md](HARNESS.md)** (harness integration) · **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (record spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
 
 ## Development
 

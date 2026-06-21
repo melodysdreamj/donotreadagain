@@ -1,11 +1,15 @@
-# DNR Protocol
+# DNR Transcript Cache Protocol
 
-The DNR Protocol is a small contract for **verified transcript records** attached to
-expensive-to-parse files. It lets agents and harnesses avoid repeated OCR, ASR, vision,
-PDF parsing, and Office extraction while keeping normal security boundaries intact.
+The DNR Transcript Cache Protocol is a small contract for **verified transcript records**
+tied to expensive-to-parse source files. It lets agents and harnesses avoid repeated OCR,
+ASR, vision, PDF parsing, and Office extraction while keeping normal security boundaries
+intact.
 
 `dnr` is the reference CLI implementation. A harness can call the CLI, or it can implement
 the protocol directly and remain compatible with the same records.
+
+It is deliberately narrower than a general knowledge format: dnr stores faithful text that
+came from a concrete file and proves that the text still matches that file.
 
 ## One-sentence contract
 
@@ -14,7 +18,7 @@ to parse it anyway, store the transcript with provenance for the next agent.
 
 ## Roles
 
-- **Protocol:** the portable record, trust, and cache behavior described here and specified in
+- **Protocol:** the portable transcript-record, trust, and cache behavior described here and specified in
   [spec/dnr-0.1.md](spec/dnr-0.1.md).
 - **Reference implementation:** the `dnr` CLI published as the `donotreadagain` Python package.
 - **Harness:** an agent runtime, coding agent, workflow engine, or app that reads files on behalf
@@ -109,6 +113,7 @@ Indexer support later.
 
 - DNR does not define an OCR, ASR, vision, or embedding model.
 - DNR does not make cached text authoritative truth.
+- DNR does not define curated knowledge pages, runbooks, or semantic memory.
 - DNR does not ask agents to pre-process entire folders by default.
 - DNR does not require the `dnr` CLI when a harness implements compatible records natively.
 

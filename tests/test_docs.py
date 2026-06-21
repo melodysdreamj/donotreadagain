@@ -13,7 +13,7 @@ def test_harness_docs_are_linked_from_readme():
     assert "[HARNESS.md](HARNESS.md)" in readme
     assert "[PROTOCOL.md](PROTOCOL.md)" in readme
     assert "read-through transcript cache" in harness
-    assert "[DNR Protocol](PROTOCOL.md)" in harness
+    assert "[DNR Transcript Cache Protocol](PROTOCOL.md)" in harness
     assert "does not modify user files" in harness
     assert "Known file" in harness
     assert "Miss" in harness

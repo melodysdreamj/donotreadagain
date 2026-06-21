@@ -1,4 +1,4 @@
-"""The dnr agent skill (M8) — the canonical knowledge an agent fetches ONCE.
+"""The dnr agent skill (M8) — the canonical agent instruction fetched once.
 
 dnr installs **no per-folder note**. An agent that meets a dnr artifact (its `_about`
 pointer) fetches this skill from :data:`dnr.bootstrap.SKILL_URL`, installs it into its own
@@ -13,7 +13,7 @@ from . import bootstrap, guide
 
 NAME = "dnr"
 DESCRIPTION = (
-    "Read AI transcripts cached inside files (donotreadagain) instead of re-OCR/re-parsing, and "
+    "Read verified transcripts cached by donotreadagain instead of re-OCR/re-parsing, and "
     "query a folder's transcripts. Use when re-reading expensive files (PDF/image/audio/scan/video) "
     "or when you see a .dnr.db or an `_about: donotreadagain` record. "
     "Recommended install: `pipx install donotreadagain`; one-off fallback: "
@@ -73,7 +73,7 @@ request/OK.
 ## B. A folder-wide question — you don't know which file(s)
 1. **Index existing cache first:** `dnr index <folder>` — cheap incremental scan; it harvests existing
    records and invalidates stale db-only records. It does **not** transcribe pending files.
-2. **Query cached knowledge** (no opening files): combine filters in one go — `dnr query <folder> --match "<text>"
+2. **Query cached transcripts** (no opening files): combine filters in one go — `dnr query <folder> --match "<text>"
    --tag a,b --since 2025-01-01 --until 2026-12-31 --sort date` (text ∩ tags ∩ time). For an exhaustive
    sweep use **`--any 가압류,보전,집행`** (match ANY — synonym expansion is *your* job, not a model's).
    `--match X --context 300` = KWIC. `--where` is restricted to read-only filters over the fixed table.

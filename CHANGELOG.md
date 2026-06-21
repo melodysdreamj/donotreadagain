@@ -15,8 +15,8 @@ All notable changes to this project are documented here. Format loosely follows
   transcription unless asked.
 - Add `HARNESS.md` plus Python, TypeScript, and agent-instruction examples for read-through
   transcript cache integrations.
-- Add `PROTOCOL.md` to position dnr as the reference implementation of a portable verified
-  transcript-record protocol.
+- Add `PROTOCOL.md` to position dnr as the reference implementation of a portable source-file
+  transcript cache protocol.
 
 ## 0.2.2 - 2026-06-21
 
@@ -58,7 +58,7 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Changed
 - Agent instructions now frame dnr as an opportunistic cache, not a pre-transcription crawler:
-  agents should first use cached/indexed knowledge and only record transcripts for files they
+  agents should first use cached/indexed transcripts and only record transcripts for files they
   already need to read for the current task.
 
 ## 0.1.6
