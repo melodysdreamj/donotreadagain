@@ -89,7 +89,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 ```
 
 **Where the record lives (no sidecar files):**
-- **In-file** for formats with a metadata slot — PDF→XMP, MP3→ID3, PNG→iTXt, JPEG→APP segment. Pixels/bytes-of-content untouched (`content_hash` invariant), so the transcript **travels with the file** (move it, email it — it's still there).
+- **In-file** for formats with a metadata slot — PDF→XMP, MP3→ID3, M4A/MP4/MOV→MP4 freeform atom, FLAC/OGG/OPUS→Vorbis/Opus comments, PNG→iTXt, JPEG→APP segment. Pixels/bytes-of-content untouched (`content_hash` invariant), so the transcript **travels with the file** (move it, email it — it's still there).
 - **db-only** in the folder's `.dnr.db` for formats with no slot yet (docx, …), or via `--no-embed` when the user explicitly wants byte-identical originals / no file modification. db-only records are folder-scoped; if the source file changes, the stale record is removed and the file must be re-ingested/re-recorded.
 - **Nothing** for already-readable text (`.txt`/`.md`/`.csv`) — an agent just reads it.
 
@@ -99,10 +99,12 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 |---|---|---|---|
 | PDF | local text layer (`PyMuPDF` first, `pypdf` fallback) or agent vision for scans | XMP in-file | partial |
 | PNG / JPEG | agent-supplied vision transcript | PNG iTXt / JPEG APP in-file | implemented |
-| MP3 / WAV / M4A | local Whisper provider via `donotreadagain[audio]`, if installed | MP3 ID3 in-file / others db-only | partial |
+| HEIC / HEIF | agent-supplied vision transcript; optional `pillow-heif` hash | db-only | partial |
+| MP3 / WAV / M4A / FLAC / OGG / OPUS | local Whisper provider via `donotreadagain[audio]`, if installed | in-file except WAV db-only | partial |
 | DOCX | local `python-docx` text extraction | db-only | implemented |
 | XLSX | local `openpyxl` sheet extraction | db-only | implemented |
-| PPTX / video / other office/media | planned providers or agent-supplied transcript | db-only until carriers land | planned |
+| MP4 / MOV video | agent-supplied transcript/ASR+vision | MP4 freeform in-file | partial |
+| PPTX / other office/media | planned providers or agent-supplied transcript | db-only until carriers land | planned |
 
 ## Using it
 
@@ -123,7 +125,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 v0.2 early release. Published on PyPI as `donotreadagain`; the recommended path is `pipx install donotreadagain`. `uvx` remains a one-off/fallback path, but it still requires uv and can be slower than a normal install for repeated use. Standalone binaries remain a future packaging option for Python-less environments. Works today for repeat-access corpora; validated by real-corpus dogfooding. Known limits we're explicit about:
 - **Adoption is the real lever.** The value compounds when agents *know* dnr (a skill, eventually native support) — not from the tool alone.
 - **`trusted ≠ faithful`.** A signature proves *who made it + that it matches the file*, not that the transcription is accurate. Low-quality/garbled transcripts are flagged (`dnr status`), not silently trusted.
-- **Coverage is still growing.** PDF/PNG/JPEG/DOCX/XLSX are useful today; OOXML in-file carriers, more audio/video containers, pre-query auto-scan, and larger-corpus concurrency are still roadmap work.
+- **Coverage is still growing.** PDF/PNG/JPEG/HEIC/DOCX/XLSX and common audio containers are useful today; OOXML in-file carriers, more video containers, pre-query auto-scan, and larger-corpus concurrency are still roadmap work.
 - **Benchmarks are early.** The README numbers are illustrative dogfood timings; see [BENCHMARKS.md](BENCHMARKS.md) and [experiments/content-hash-invariance](experiments/content-hash-invariance) for the current proof/measurement status. A broader latency/token benchmark remains a release-readiness item.
 - **Python is currently required.** Use `pipx` for the cleanest install; a standalone binary for Python-less environments is future work.
 

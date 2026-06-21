@@ -153,6 +153,138 @@ def extract_mp3(path):
     return None
 
 
+# ------------------------------------------------------------------------- mp4
+_MP4_DNR_KEY = "----:com.donotreadagain:record"
+
+
+def embed_mp4(path, record: dict) -> None:
+    from mutagen.mp4 import MP4, MP4FreeForm
+
+    js = _dump(record).encode("utf-8")
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        tags = MP4(tmp)
+        if tags.tags is None:
+            tags.add_tags()
+        tags.tags[_MP4_DNR_KEY] = [MP4FreeForm(js, dataformat=1)]
+        tags.save()
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def extract_mp4(path):
+    from mutagen.mp4 import MP4
+
+    try:
+        tags = MP4(path).tags
+    except Exception:
+        return None
+    if not tags:
+        return None
+    vals = tags.get(_MP4_DNR_KEY)
+    if not vals:
+        return None
+    try:
+        return json.loads(bytes(vals[0]).decode("utf-8"))
+    except (ValueError, TypeError, IndexError, UnicodeDecodeError):
+        return None
+
+
+# ----------------------------------------------------------------- vorbis tags
+_VORBIS_DNR_KEY = "DNR_RECORD"
+
+
+def embed_flac(path, record: dict) -> None:
+    from mutagen.flac import FLAC
+
+    js = _dump(record)
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        tags = FLAC(tmp)
+        if tags.tags is None:
+            tags.add_tags()
+        tags[_VORBIS_DNR_KEY] = [js]
+        tags.save()
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def extract_flac(path):
+    from mutagen.flac import FLAC
+
+    try:
+        tags = FLAC(path)
+    except Exception:
+        return None
+    vals = tags.get(_VORBIS_DNR_KEY)
+    if not vals:
+        return None
+    try:
+        return json.loads(vals[0])
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
+def _ogg_class(path):
+    if Path(path).suffix.lower() == ".opus":
+        from mutagen.oggopus import OggOpus
+        return OggOpus
+    from mutagen.oggvorbis import OggVorbis
+    return OggVorbis
+
+
+def embed_ogg(path, record: dict) -> None:
+    js = _dump(record)
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        tags = _ogg_class(path)(tmp)
+        tags[_VORBIS_DNR_KEY] = [js]
+        tags.save()
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def extract_ogg(path):
+    try:
+        tags = _ogg_class(path)(path)
+    except Exception:
+        return None
+    vals = tags.get(_VORBIS_DNR_KEY)
+    if not vals:
+        return None
+    try:
+        return json.loads(vals[0])
+    except (ValueError, TypeError, IndexError):
+        return None
+
+
 # ------------------------------------------------------------------------ PNG
 # Lossless: decode→encode preserves pixels, so content_hash (decoded pixels) is invariant.
 def embed_png(path, record: dict) -> None:
@@ -290,9 +422,13 @@ def strip_jpeg(path) -> bool:
 
 # ---------------------------------------------------------------------- dispatch
 _EMBED = {".pdf": embed_pdf, ".mp3": embed_mp3, ".png": embed_png,
-          ".jpg": embed_jpeg, ".jpeg": embed_jpeg}
+          ".jpg": embed_jpeg, ".jpeg": embed_jpeg,
+          ".m4a": embed_mp4, ".mp4": embed_mp4, ".mov": embed_mp4,
+          ".flac": embed_flac, ".ogg": embed_ogg, ".opus": embed_ogg}
 _EXTRACT = {".pdf": extract_pdf, ".mp3": extract_mp3, ".png": extract_png,
-            ".jpg": extract_jpeg, ".jpeg": extract_jpeg}
+            ".jpg": extract_jpeg, ".jpeg": extract_jpeg,
+            ".m4a": extract_mp4, ".mp4": extract_mp4, ".mov": extract_mp4,
+            ".flac": extract_flac, ".ogg": extract_ogg, ".opus": extract_ogg}
 
 
 def has_carrier(path) -> bool:
@@ -375,8 +511,95 @@ def strip_mp3(path) -> bool:
         raise
 
 
+def strip_mp4(path) -> bool:
+    from mutagen.mp4 import MP4
+
+    try:
+        tags = MP4(path)
+    except Exception:
+        return False
+    if not tags.tags or _MP4_DNR_KEY not in tags.tags:
+        return False
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        t = MP4(tmp)
+        if t.tags and _MP4_DNR_KEY in t.tags:
+            del t.tags[_MP4_DNR_KEY]
+            t.save()
+        os.replace(tmp, path)
+        return True
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def strip_flac(path) -> bool:
+    from mutagen.flac import FLAC
+
+    try:
+        tags = FLAC(path)
+    except Exception:
+        return False
+    if not tags.get(_VORBIS_DNR_KEY):
+        return False
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        t = FLAC(tmp)
+        if t.get(_VORBIS_DNR_KEY):
+            del t[_VORBIS_DNR_KEY]
+            t.save()
+        os.replace(tmp, path)
+        return True
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def strip_ogg(path) -> bool:
+    try:
+        tags = _ogg_class(path)(path)
+    except Exception:
+        return False
+    if not tags.get(_VORBIS_DNR_KEY):
+        return False
+    data = Path(path).read_bytes()
+    d = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, suffix=".dnrtmp")
+    os.close(fd)
+    try:
+        Path(tmp).write_bytes(data)
+        t = _ogg_class(path)(tmp)
+        if t.get(_VORBIS_DNR_KEY):
+            del t[_VORBIS_DNR_KEY]
+            t.save()
+        os.replace(tmp, path)
+        return True
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 _STRIP = {".pdf": strip_pdf, ".mp3": strip_mp3, ".png": strip_png,
-          ".jpg": strip_jpeg, ".jpeg": strip_jpeg}
+          ".jpg": strip_jpeg, ".jpeg": strip_jpeg,
+          ".m4a": strip_mp4, ".mp4": strip_mp4, ".mov": strip_mp4,
+          ".flac": strip_flac, ".ogg": strip_ogg, ".opus": strip_ogg}
 
 
 def strip(path) -> bool:

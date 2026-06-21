@@ -91,7 +91,7 @@ global instruction writes, say so briefly and continue using dnr in the current 
 - Scan / image / video / anything you must *look* at → YOU transcribe it **verbatim** per `dnr guide`
   (id `dnr-verbatim-1`) — complete, no summarizing — then
   `dnr record <file> --transcript-file <t.md> --method vision --transcriber <your-model>`.
-- **Storage (no sidecar files).** Carrier formats (PDF/MP3/PNG/JPEG) embed the record **in-file** by
+- **Storage (no sidecar files).** Carrier formats (PDF/MP3/M4A/MP4/MOV/FLAC/OGG/OPUS/PNG/JPEG) embed the record **in-file** by
   default — portable; do not ask about storage mode. This rewrites the file's bytes but the *content*
   is unchanged (`content_hash`
   invariant). Non-carrier formats that still need transcription (docx, …) store a **db-only** record in

@@ -21,6 +21,12 @@ PROFILES = {
     ".pdf": "dnr-pdf-content-1",
     ".mp3": "dnr-audio-1",
     ".wav": "dnr-audio-1",
+    ".m4a": "dnr-mp4-media-1",
+    ".mp4": "dnr-mp4-media-1",
+    ".mov": "dnr-mp4-media-1",
+    ".flac": "dnr-flac-audio-1",
+    ".ogg": "dnr-ogg-packets-1",
+    ".opus": "dnr-ogg-packets-1",
 }
 
 
@@ -106,6 +112,103 @@ def wav_content_hash(path) -> str:
     raise ValueError("no 'data' chunk found in WAV")
 
 
+def mp4_content_hash(path) -> str:
+    """Hash MP4/M4A/MOV media payloads, excluding container metadata atoms.
+
+    Freeform tags live under ``moov.udta.meta`` and may change when dnr embeds a record.
+    The encoded audio/video payload is stored in one or more top-level ``mdat`` boxes, so
+    hashing those payloads gives us the same invariance property as MP3/WAV carriers.
+    """
+    data = Path(path).read_bytes()
+    h = hashlib.sha256()
+    found = False
+    i = 0
+    n = len(data)
+    while i + 8 <= n:
+        size = int.from_bytes(data[i:i + 4], "big")
+        typ = data[i + 4:i + 8]
+        header = 8
+        if size == 1:
+            if i + 16 > n:
+                break
+            size = int.from_bytes(data[i + 8:i + 16], "big")
+            header = 16
+        elif size == 0:
+            size = n - i
+        if size < header or i + size > n:
+            break
+        if typ == b"mdat":
+            found = True
+            h.update(b"<MDAT>")
+            h.update(data[i + header:i + size])
+        i += size
+    if not found:
+        raise ValueError("no 'mdat' box found in MP4/M4A/MOV")
+    return "sha256:" + h.hexdigest()
+
+
+def flac_content_hash(path) -> str:
+    """Hash FLAC audio frames, excluding FLAC metadata blocks."""
+    data = Path(path).read_bytes()
+    if not data.startswith(b"fLaC"):
+        raise ValueError("not a FLAC file")
+    i = 4
+    while i + 4 <= len(data):
+        block_header = data[i]
+        length = int.from_bytes(data[i + 1:i + 4], "big")
+        i += 4 + length
+        if block_header & 0x80:
+            break
+    if i > len(data):
+        raise ValueError("truncated FLAC metadata")
+    return "sha256:" + sha256_hex(data[i:])
+
+
+def _ogg_packets(path):
+    """Yield complete logical packets from an Ogg stream."""
+    from mutagen.ogg import OggPage
+
+    pending = b""
+    with open(path, "rb") as f:
+        while True:
+            try:
+                page = OggPage(f)
+            except EOFError:
+                break
+            packets = list(page.packets)
+            if page.continued and packets:
+                packets[0] = pending + packets[0]
+                pending = b""
+            if not page.complete and packets:
+                pending = packets.pop()
+            for packet in packets:
+                yield packet
+
+
+def ogg_content_hash(path) -> str:
+    """Hash Ogg Vorbis/Opus stream packets while excluding comment/tag packets."""
+    h = hashlib.sha256()
+    first = None
+    hashed = False
+    for i, packet in enumerate(_ogg_packets(path)):
+        if i == 0:
+            first = packet
+        is_vorbis_comment = (
+            i == 1 and first and first.startswith(b"\x01vorbis") and packet.startswith(b"\x03vorbis")
+        )
+        is_opus_tags = (
+            i == 1 and first and first.startswith(b"OpusHead") and packet.startswith(b"OpusTags")
+        )
+        if is_vorbis_comment or is_opus_tags:
+            continue
+        hashed = True
+        h.update(b"<PKT>")
+        h.update(packet)
+    if not hashed:
+        raise ValueError("no Ogg packets found")
+    return "sha256:" + h.hexdigest()
+
+
 def text_content_hash(path) -> str:
     """Hash NFC-normalized text. Plain-text files have no metadata region to exclude."""
     import unicodedata
@@ -117,6 +220,13 @@ def text_content_hash(path) -> str:
 def image_content_hash(path) -> str:
     """Hash decoded pixels + dimensions (metadata writes don't change it; re-encoding does)."""
     from PIL import Image
+
+    if Path(path).suffix.lower() in {".heic", ".heif"}:
+        try:
+            import pillow_heif
+            pillow_heif.register_heif_opener()
+        except Exception as exc:
+            raise ValueError("HEIC/HEIF content_hash requires the optional pillow-heif package") from exc
 
     with Image.open(path) as im:
         im = im.convert("RGBA")
@@ -138,11 +248,13 @@ _DISPATCH = {
     ".pdf": pdf_content_hash,
     ".mp3": mp3_content_hash,
     ".wav": wav_content_hash,
+    ".m4a": mp4_content_hash, ".mp4": mp4_content_hash, ".mov": mp4_content_hash,
+    ".flac": flac_content_hash, ".ogg": ogg_content_hash, ".opus": ogg_content_hash,
     ".txt": text_content_hash, ".md": text_content_hash, ".json": text_content_hash,
     ".csv": text_content_hash, ".tsv": text_content_hash, ".log": text_content_hash,
     ".jpg": image_content_hash, ".jpeg": image_content_hash, ".png": image_content_hash,
     ".tiff": image_content_hash, ".tif": image_content_hash, ".webp": image_content_hash,
-    ".bmp": image_content_hash, ".gif": image_content_hash,
+    ".bmp": image_content_hash, ".gif": image_content_hash, ".heic": image_content_hash, ".heif": image_content_hash,
     ".docx": ooxml_content_hash, ".xlsx": ooxml_content_hash, ".pptx": ooxml_content_hash,
 }
 

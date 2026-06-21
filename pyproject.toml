@@ -1,6 +1,6 @@
 [project]
 name = "donotreadagain"
-version = "0.2.0"
+version = "0.2.1"
 description = "Read once, never again — self-describing files so AI agents stop re-parsing."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,6 +28,7 @@ Issues = "https://github.com/melodysdreamj/donotreadagain/issues"
 [project.optional-dependencies]
 dev = ["pytest", "fpdf2"]
 audio = ["faster-whisper"]
+heic = ["pillow-heif"]
 
 [project.scripts]
 dnr = "dnr.cli:main"

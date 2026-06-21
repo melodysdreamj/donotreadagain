@@ -19,13 +19,13 @@ from . import record as _record
 #: default local transcriber by extension — audio -> Whisper, born-digital PDF -> text-extract
 DEFAULT_PROVIDER = {
     ".pdf": "text-extract", ".docx": "docx", ".xlsx": "xlsx",
-    ".mp3": "whisper", ".wav": "whisper", ".flac": "whisper",
-    ".m4a": "whisper", ".ogg": "whisper", ".opus": "whisper",
+    ".mp3": "whisper", ".wav": "whisper", ".m4a": "whisper",
+    ".flac": "whisper", ".ogg": "whisper", ".opus": "whisper",
 }
 #: already-text — no transcription and no record; read directly
 TEXT_EXTS = {".txt", ".md", ".json", ".csv", ".tsv", ".log"}
 #: visual/structured types that need an agent/vision transcript via `dnr record`
-AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp", ".heic", ".bmp", ".gif",
+AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp", ".heic", ".heif", ".bmp", ".gif",
               ".mp4", ".mov", ".mkv", ".webm", ".pptx", ".html", ".rtf", ".epub"}
 
 

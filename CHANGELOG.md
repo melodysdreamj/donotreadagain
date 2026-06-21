@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.2.1 - 2026-06-21
+
+### Fixed
+- Add MP4-family content hashing and in-file carriers for M4A/MP4/MOV records, so M4A audio
+  no longer advertises local ingest while failing before record creation.
+- Add content hashes and in-file comment carriers for FLAC/OGG/OPUS.
+- Add HEIC/HEIF db-only vision-record support via an optional pillow-heif decoded-pixel hash.
+
 ## 0.2.0 - 2026-06-21
 
 ### Changed
