@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sqlite3
 import unicodedata
 from datetime import datetime, timezone
@@ -101,6 +102,18 @@ def _delete_row(con, rel: str) -> None:
     con.execute("DELETE FROM dnr_fts WHERE path=?", (rel,))
 
 
+def _stat_same(prev, st) -> bool:
+    return bool(prev and prev["bytes"] == st.st_size and abs((prev["mtime"] or 0) - st.st_mtime) < 1e-6)
+
+
+def _trusted_for_file(rec: dict | None, trust: dict, abspath) -> bool:
+    return (
+        rec is not None
+        and signing.verify(rec, trust)
+        and rec.get("content_hash") == hashing.content_hash(abspath)
+    )
+
+
 def _store(con, abspath, rel, rec, st, origin: str, record_json: str | None = None) -> None:
     tr = rec.get("transcript") or {}
     prov = rec.get("provenance") or {}
@@ -126,7 +139,8 @@ def _store(con, abspath, rel, rec, st, origin: str, record_json: str | None = No
 
 def put_record(folder, abspath, rec: dict) -> None:
     """Store a **db-only** record for a file with no in-file carrier (text, docx, …) — the index
-    holds it authoritatively (no sidecar). `scan` preserves it; only a missing file tombstones it."""
+    holds it authoritatively (no sidecar). `scan` preserves it while the source file still matches,
+    and tombstones it when the source changes or disappears."""
     folder = str(folder)
     rel = _nfc(os.path.relpath(abspath, folder))
     con = open_db(folder)
@@ -170,7 +184,7 @@ def scan(folder, trust: dict | None = None) -> dict:
     trust = keyring.default_trust() if trust is None else trust
     con = open_db(folder)
     try:
-        existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime, origin FROM dnr")}
+        existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime, origin, record_json FROM dnr")}
         seen_paths: set[str] = set()
         indexed = skipped = removed = errored = untrusted = 0
 
@@ -178,24 +192,29 @@ def scan(folder, trust: dict | None = None) -> dict:
             rel = _nfc(os.path.relpath(abspath, folder))
             seen_paths.add(rel)
             prev = existing.get(rel)
-            if prev and prev["origin"] == "db":
-                skipped += 1  # db-only record is authoritative; not re-derived from the file
-                continue
             try:
                 st = os.stat(abspath)
-                if prev and prev["bytes"] == st.st_size and abs((prev["mtime"] or 0) - st.st_mtime) < 1e-6:
+                if prev and prev["origin"] == "db":
+                    if _stat_same(prev, st):
+                        skipped += 1
+                        continue
+                    rec = json.loads(prev["record_json"]) if prev["record_json"] else None
+                    if _trusted_for_file(rec, trust, abspath):
+                        _store(con, abspath, rel, rec, st, "db", prev["record_json"])
+                        indexed += 1
+                    else:
+                        _delete_row(con, rel)
+                        removed += 1
+                    continue
+                if _stat_same(prev, st):
                     skipped += 1
                     continue
                 rec = _embed.extract(abspath)
-                trusted = (
-                    rec is not None
-                    and signing.verify(rec, trust)
-                    and rec.get("content_hash") == hashing.content_hash(abspath)
-                )
+                trusted = _trusted_for_file(rec, trust, abspath)
                 if not trusted:
                     if rec is not None:
                         untrusted += 1
-                    if prev is not None:  # a stale harvested (origin='file') row; db-only handled above
+                    if prev is not None:
                         _delete_row(con, rel)
                         removed += 1
                     continue
@@ -203,6 +222,9 @@ def scan(folder, trust: dict | None = None) -> dict:
                 indexed += 1
             except Exception:
                 errored += 1
+                if prev is not None:
+                    _delete_row(con, rel)
+                    removed += 1
 
         for path in list(existing):
             if path not in seen_paths:
@@ -219,6 +241,57 @@ def scan(folder, trust: dict | None = None) -> dict:
 # --------------------------------------------------------------------------- query
 _SORT_COLS = {"path", "mtime", "indexed_at", "bytes", "title", "method", "lang",
               "transcriber", "content_hash", "start_date"}
+_WHERE_NAMES = {
+    "content_hash", "path", "mime", "bytes", "mtime", "indexed_at", "method", "transcriber",
+    "version", "lang", "title", "summary", "tags", "start_date", "transcript", "fields",
+    "extras", "whole_hash", "origin", "record_json", "dnr",
+    "and", "or", "not", "is", "null", "like", "glob", "regexp", "match", "between", "in",
+    "true", "false", "collate", "nocase", "escape",
+    "json_extract", "length", "coalesce", "ifnull", "lower", "upper", "date", "datetime",
+}
+_WHERE_BLOCKED = re.compile(
+    r"\b(select|union|insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|reindex|replace)\b",
+    re.IGNORECASE,
+)
+
+
+def _strip_sql_strings(sql: str) -> str:
+    """Remove quoted string contents before checking identifiers/blocked words."""
+    out, i, quote = [], 0, None
+    while i < len(sql):
+        c = sql[i]
+        if quote:
+            if c == quote:
+                if i + 1 < len(sql) and sql[i + 1] == quote:
+                    i += 2
+                    continue
+                quote = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            quote = c
+            out.append(" ")
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _validate_where(where: str) -> str:
+    """Small guardrail for agent-supplied filters: fixed columns + read-only expressions only."""
+    if not where or not where.strip():
+        raise ValueError("--where must not be empty")
+    expr = where.strip()
+    check = _strip_sql_strings(expr)
+    if ";" in check or "--" in check or "/*" in check or "*/" in check:
+        raise ValueError("--where accepts one read-only expression; comments/statements are not allowed")
+    if _WHERE_BLOCKED.search(check):
+        raise ValueError("--where accepts a read-only filter expression, not SELECT/DDL/DML")
+    unknown = sorted({name for name in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]*\b", check)
+                      if name.lower() not in _WHERE_NAMES})
+    if unknown:
+        raise ValueError(f"--where uses unsupported name(s): {', '.join(unknown)}")
+    return expr
 
 
 def _order_sql(sort: str | None, desc: bool) -> str:
@@ -269,9 +342,10 @@ def query_tag(folder, tag: str, sort: str | None = None, desc: bool = False) -> 
 
 def query_where(folder, where: str, params: tuple = (), sort: str | None = None,
                 desc: bool = False) -> list[dict]:
-    """Structured query over the fixed columns (local tool; `where` is trusted input)."""
+    """Structured query over fixed columns with a small read-only expression guard."""
     con = open_db(folder)
     try:
+        where = _validate_where(where)
         rows = con.execute(f"SELECT * FROM dnr WHERE {where}{_order_sql(sort, desc)}", params).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -331,7 +405,7 @@ def query_compose(folder, *, match: str | None = None, any_terms: list | None = 
         if min_chars:
             conds.append("length(dnr.transcript) >= ?"); params.append(min_chars)
         if where:
-            conds.append(f"({where})")
+            conds.append(f"({_validate_where(where)})")
         sql = "SELECT DISTINCT dnr.* FROM dnr"
         if conds:
             sql += " WHERE " + " AND ".join(conds)

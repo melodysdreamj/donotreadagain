@@ -300,7 +300,7 @@ def _cmd_strip(args) -> int:
 
     from . import embed, index
 
-    removed = embed.strip(args.file)  # in-file carrier (+ any legacy sidecar)
+    removed = embed.strip(args.file)  # in-file carrier (+ any legacy sidecar cleanup)
     removed = index.remove_record(Path(args.file).parent, args.file) or removed  # db-only record
     if removed:
         print(f"stripped dnr record from {args.file}")
@@ -441,7 +441,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.add_parser("init", help="ensure a signing key + show where agents fetch the skill").set_defaults(fn=_cmd_init)
     sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 
-    ps = sub.add_parser("strip", help="remove the dnr record (in-file + sidecar) before sharing")
+    ps = sub.add_parser("strip", help="remove the dnr record before sharing")
     ps.add_argument("file")
     ps.set_defaults(fn=_cmd_strip)
 

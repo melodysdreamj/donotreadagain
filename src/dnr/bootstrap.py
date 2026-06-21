@@ -2,7 +2,7 @@
 
 dnr installs **no per-folder note**. Instead every record carries a one-line `_about`
 pointer (see :func:`dnr.record.new_record`), so any agent that inspects a dnr artifact
-(an XMP record, a `.dnr.json` sidecar, or the `.dnr.db` readme) learns what it is and
+(an embedded record, a db-only record, or the `.dnr.db` readme) learns what it is and
 can fetch the skill **once** from the canonical URL — then it knows dnr in every folder.
 Nothing has to be pre-installed: the skill is fetched from a URL, and dnr itself runs
 via `uvx` (no install) or is read with ambient `sqlite3` / `exiftool`.

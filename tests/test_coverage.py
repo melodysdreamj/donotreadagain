@@ -1,4 +1,4 @@
-"""Format coverage: images (content_hash + agent record + sidecar) and docx (local extract)."""
+"""Format coverage: images (content_hash + agent record) and docx (local extract)."""
 import pytest
 
 
@@ -77,5 +77,31 @@ def test_docx_bytes_unchanged_by_ingest(tmp_path):
     d.add_paragraph("body text")
     d.save(str(p))
     h0 = hashing.content_hash(p)
-    ingest.ingest(p)  # writes a sidecar; the .docx zip is not touched
+    ingest.ingest(p)  # writes a db-only record; the .docx zip is not touched
     assert hashing.content_hash(p) == h0
+
+
+def test_db_only_record_removed_when_source_changes(tmp_path):
+    import docx
+
+    from dnr import index, ingest
+
+    folder = tmp_path / "fresh"
+    folder.mkdir()
+    p = folder / "memo.docx"
+    d = docx.Document()
+    d.add_paragraph("old unique needle")
+    d.save(str(p))
+
+    ingest.ingest(p)
+    index.scan(folder)
+    assert index.query_match(folder, "needle") == ["memo.docx"]
+
+    d = docx.Document()
+    d.add_paragraph("new body without the old keyword")
+    d.save(str(p))
+
+    assert ingest.read_cached(p) is None
+    stats = index.scan(folder)
+    assert stats["removed"] == 1
+    assert index.query_match(folder, "needle") == []

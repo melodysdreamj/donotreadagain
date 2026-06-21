@@ -22,7 +22,7 @@ DEFAULT_PROVIDER = {
     ".mp3": "whisper", ".wav": "whisper", ".flac": "whisper",
     ".m4a": "whisper", ".ogg": "whisper", ".opus": "whisper",
 }
-#: already-text — no transcription (method=none), stored as a sidecar
+#: already-text — no transcription and no record; read directly
 TEXT_EXTS = {".txt", ".md", ".json", ".csv", ".tsv", ".log"}
 #: visual/structured types that need an agent/vision transcript via `dnr record`
 AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp", ".heic", ".bmp", ".gif",

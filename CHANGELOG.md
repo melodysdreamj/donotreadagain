@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.2
+
+### Fixed
+- `dnr index` now invalidates stale db-only records when the source file changes, so `dnr query`
+  no longer returns old transcripts after a docx/`--no-embed` source edit.
+- `--where` filters now reject multi-statement, DDL/DML, subquery, and unknown-column expressions
+  instead of passing arbitrary raw SQL straight through.
+- README, spec, security notes, and the agent skill now consistently describe the current
+  no-sidecar/db-only storage model and the published PyPI release state.
+
 ## 0.1.1
 
 ### Fixed

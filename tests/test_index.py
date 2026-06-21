@@ -104,6 +104,22 @@ def test_cli_index_query_smoke(corpus):
     assert cli.main(["query", str(corpus), "--where", "method='text-extract'"]) == 0
 
 
+def test_where_guardrails(corpus):
+    from dnr import index
+
+    index.scan(corpus)
+    assert len(index.query_where(corpus, "method = 'text-extract' AND bytes > 0")) == 2
+    assert len(index.query_where(corpus, "dnr.method = 'text-extract'")) == 2
+    assert len(index.query_where(corpus, "json_extract(fields,'$.missing') IS NULL")) == 2
+
+    with pytest.raises(ValueError, match="read-only"):
+        index.query_where(corpus, "1=1; DROP TABLE dnr")
+    with pytest.raises(ValueError, match="read-only"):
+        index.query_where(corpus, "path IN (SELECT path FROM dnr)")
+    with pytest.raises(ValueError, match="unsupported name"):
+        index.query_where(corpus, "unknown_column = 1")
+
+
 def test_index_cjk_short_term_fallback(tmp_path):
     """2-char CJK terms (below trigram minimum) match via the LIKE fallback (M6)."""
     from dnr import index, ingest

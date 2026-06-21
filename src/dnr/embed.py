@@ -1,6 +1,6 @@
 """Embed / extract carriers (M2).
 
-Write the record into a file's native metadata slot (or a sidecar), read it back.
+Write the record into a file's native metadata slot, read it back.
 All writes are **atomic** (temp + fsync + rename) and **deterministic** so re-embed
 keeps whole_hash stable (conformance gates 2-4, vision.md §13, §16).
 
@@ -46,7 +46,7 @@ def _atomic_replace(path, data: bytes) -> None:
         raise
 
 
-# --------------------------------------------------------------------- sidecar
+# ------------------------------------------------------------ legacy sidecar IO
 def sidecar_path(path) -> str:
     return str(path) + ".dnr.json"
 
@@ -380,7 +380,7 @@ _STRIP = {".pdf": strip_pdf, ".mp3": strip_mp3, ".png": strip_png,
 
 
 def strip(path) -> bool:
-    """Remove the dnr record (in-file slot + any sidecar). True if anything was removed.
+    """Remove the dnr record (in-file slot + any legacy sidecar). True if anything was removed.
 
     Use before sharing a file to avoid leaking the embedded transcript / summary / entities.
     Content is unchanged (content_hash is invariant).

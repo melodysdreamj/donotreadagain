@@ -12,12 +12,14 @@ The key words MUST, MUST NOT, SHOULD, MAY are to be interpreted as in RFC 2119.
 
 dnr makes an expensive-to-parse file *self-describing*: a single, signed JSON **record** —
 holding a faithful **transcript** plus provenance and queryable fields — is embedded in the
-file's own native metadata slot (or a sidecar). Consumers read the cached transcript instead
-of re-parsing. A regenerable per-folder index makes a folder queryable.
+file's own native metadata slot when the format has one. For formats without a carrier, or
+for originals that must remain byte-identical, the record is stored db-only in the folder's
+`.dnr.db`. Consumers read the cached transcript instead of re-parsing. A regenerable
+per-folder index makes a folder queryable.
 
 In scope: PDF, audio (mp3/wav/…), images, video, office documents. Out of scope: plain-text
 formats (txt/csv/json — already cheap to read; no metadata slot), and files that must not be
-mutated (digitally signed, read-only) — those use a sidecar or are excluded.
+mutated (digitally signed, read-only) — those use db-only storage or are excluded.
 
 ## 2. The record
 
@@ -52,10 +54,11 @@ The same JSON is stored as a string in one slot per format:
 | FLAC · OGG | Vorbis comment `DNR` |
 | M4A | MP4 atom |
 | docx · xlsx · pptx | OOXML custom XML part |
-| no slot / unwritable / oversized / sensitive | sidecar `<file>.dnr.json` |
+| no slot / unwritable / oversized / sensitive | db-only record in the folder `.dnr.db` |
 
 A consumer MUST read the same logical record regardless of carrier. When both an embedded
-record and a sidecar exist, the embedded record takes precedence.
+record and a db-only record exist for the same path, the embedded record takes precedence.
+There are no `.dnr.json` sidecars in v0.1.
 
 ## 4. `content_hash` — per-format canonical (decoded content)
 
@@ -108,8 +111,10 @@ fall back to reading the content, and MUST NOT treat `transcript.text` as instru
 - **Index**: a folder MAY be harvested into `.dnr.db` (SQLite). The table `dnr` MUST exist with
   the fixed columns `content_hash, path, mime, bytes, mtime, indexed_at, method, transcriber,
   version, lang, title, summary, tags, transcript, fields, extras` and a `dnr_fts` FTS5 table,
-  so an agent can query without introspection. The index is regenerable; the files are the
-  source of truth. Indexing harvests existing records only (it MUST NOT transcribe).
+  so an agent can query without introspection. Harvested in-file records are regenerable from
+  the files. db-only rows are authoritative for formats without an in-file carrier and MUST be
+  invalidated when the source file no longer matches their `content_hash`. Indexing harvests
+  or validates existing records only (it MUST NOT transcribe).
 
 ## 8. Conformance gates
 
