@@ -1,8 +1,8 @@
 # donotreadagain (`dnr`)
 
-> **Read once, never again.** Embed a faithful, signed AI transcript into each expensive-to-parse file's own metadata, so AI agents stop re-OCR/re-parsing the same PDF, image, scan, or audio every time.
+> **Read once, never again.** Embed a faithful, signed transcript into each expensive-to-parse file's own metadata, so AI agents stop re-OCR/re-parsing the same PDF, image, scan, spreadsheet, or audio every time.
 
-[![ci](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml/badge.svg)](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/donotreadagain)](https://pypi.org/project/donotreadagain/) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml) · status: v0.1 early release
+[![ci](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml/badge.svg)](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/donotreadagain)](https://pypi.org/project/donotreadagain/) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml) · status: v0.2 early release
 
 ---
 
@@ -12,13 +12,13 @@ AI agents re-parse the same file *every time they touch it* — re-OCR a scan, r
 
 ## The idea
 
-dnr reads a file **once**, then writes a verbatim transcript + structured metadata **into the file's own native metadata slot** as a *signed* JSON record — the file becomes **self-describing**. Any agent that opens it later reads the cached transcript instead of re-parsing. A per-folder SQLite + FTS5 index makes a whole folder searchable without opening anything.
+dnr is the **cache/trust/index layer** for expensive reads. A local extractor, local ASR model, or the calling AI agent reads a file once; dnr stores the resulting transcript + structured metadata as a *signed* JSON record, preferably **inside the file's own native metadata slot**. The file becomes **self-describing**. Any agent that opens it later reads the cached transcript instead of re-parsing. A per-folder SQLite + FTS5 index makes a whole folder searchable without opening anything.
 
 The second view is the win:
 
 | | first view (re-parse) | second view (cached) |
 |---|---|---|
-| born-digital PDF | ~1.4 s (pypdf) | ~60 ms — **~22× faster** |
+| born-digital PDF | local text extraction (PyMuPDF→pypdf) | ~60 ms — no PDF parse |
 | image / scan / audio | a vision / Whisper model call | a few ms of text — **no model at all** |
 
 …and the cache is **trustworthy**: a record is used only if it's signed by a trusted key *and* its `content_hash` still matches the file, so "fast" never means "stale or forged."
@@ -28,7 +28,7 @@ The second view is the win:
 ```console
 $ dnr ingest contract.pdf            # transcribe once → sign → embed in the file
 ingested contract.pdf  [in-file]
-  method=text-extract transcriber=pypdf
+  method=text-extract transcriber=pymupdf
   signed key_id=ce6d170a497238f7
 
 $ dnr read contract.pdf              # later (or from any agent): verified cache hit — no re-parsing
@@ -48,19 +48,25 @@ The transcript lives *inside* `contract.pdf` — move it, email it, hand it to a
 
 ## Quickstart
 
-Requires **Python 3.10+** (its stdlib includes the `sqlite3` used to read the index — one dependency covers both).
+Recommended install:
 
 ```bash
-# run with no persistent install:
+pipx install donotreadagain
+dnr --version
+
+# one-off/fallback when installing is not available:
 uvx --from donotreadagain dnr <cmd>
-# or install:
-pipx install donotreadagain        # or: pip install donotreadagain
+
+# audio ASR:
+pipx inject donotreadagain faster-whisper   # ffmpeg may also be needed for decoding
 ```
 
 ```bash
-dnr ingest report.pdf              # transcribe once (local) → sign → embed in the file
+dnr ingest report.pdf              # extract once (local) → sign → embed in the file
+dnr backfill ./case-folder         # folder pass: local-provider files now, agent/vision worklist after
 dnr read   report.pdf              # print the cached transcript (verified), or fall back
 dnr index  ./case-folder           # build .dnr.db
+dnr status ./case-folder --pending # honest usable/pending/repair coverage
 dnr query  ./case-folder --match "손해배상" --tag 가압류 --since 2025-01-01
 ```
 
@@ -78,7 +84,7 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 │  signed dnr record          │ ───────▶  │  fixed table + FTS5 search  │
 │  content_hash · transcript  │           │  path · tags · transcript … │
 │  provenance · fields · sig  │           └────────────────────────────┘
-└────────────────────────────┘                 ▲ query via sqlite3 — no dnr install needed
+└────────────────────────────┘                 ▲ query via sqlite3 — dnr CLI optional for reads
    ▲ transcribe · sign · embed once (expensive)
 ```
 
@@ -91,18 +97,20 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 
 | Format | Transcription | Record storage | Status |
 |---|---|---|---|
-| PDF | local text layer (`pypdf`) or agent vision for scans | XMP in-file | partial |
+| PDF | local text layer (`PyMuPDF` first, `pypdf` fallback) or agent vision for scans | XMP in-file | partial |
 | PNG / JPEG | agent-supplied vision transcript | PNG iTXt / JPEG APP in-file | implemented |
-| MP3 / WAV | local Whisper provider, if installed | MP3 ID3 in-file / WAV db-only | partial |
+| MP3 / WAV / M4A | local Whisper provider via `donotreadagain[audio]`, if installed | MP3 ID3 in-file / others db-only | partial |
 | DOCX | local `python-docx` text extraction | db-only | implemented |
-| XLSX / PPTX / video / other office/media | planned providers | db-only until carriers land | planned |
+| XLSX | local `openpyxl` sheet extraction | db-only | implemented |
+| PPTX / video / other office/media | planned providers or agent-supplied transcript | db-only until carriers land | planned |
 
 ## Using it
 
 - **Read (consumer):** `dnr read <file>` returns the cached transcript only if it's present, trusted, and still matches (self-validating — a changed file silently misses). No dnr tool? An agent can read `.dnr.db` directly with ambient `sqlite3` (the db's `_dnr_readme` table self-describes).
-- **Transcribe (producer):** `dnr ingest` (local: pypdf / Whisper / python-docx) or `dnr record` (agent supplies a vision transcript). dnr is an opportunistic cache: do this when the current task already requires reading/parsing that file, not just because a folder has pending files. If a needed file's cached transcript is empty/garbled/unusable, repair that file immediately; ask only before expanding into whole-folder OCR/searchability work.
+- **Transcribe (producer):** `dnr ingest` (local: PyMuPDF→pypdf / python-docx / openpyxl / optional faster-whisper) or `dnr record` (agent supplies a vision/OCR transcript). dnr is an opportunistic cache: do this when the current task already requires reading/parsing that file, not just because a folder has pending files. If a needed file's cached transcript is empty/garbled/unusable, repair that file immediately; ask only before expanding into whole-folder OCR/searchability work.
+- **Backfill a folder:** `dnr backfill <folder>` (also `dnr ingest <folder>`) ingests locally-processable files in one pass, skips already-readable text, and prints a worklist for images/scans/videos or low-quality results that need agent/vision repair.
 - **Query a folder:** `dnr query <folder>` combines `--match` (FTS, Korean/CJK ok) ∩ `--tag a,b` ∩ `--since/--until` ∩ restricted `--where` over fixed columns; plus `--any` (OR sweep), `--dedup`, `--context` (KWIC), `--format json`. Save composed queries with `--save`/`--use`; accumulate labels with `dnr tag`.
-- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. `dnr init` just ensures a signing key by default; to persist the bootstrap in an agent instruction file, run `dnr init --agent-file AGENTS.md` (or `--agent-file CLAUDE.md`). To make dnr a global agent habit, run `dnr init --global-agent`; the skill asks agents to do this on first use when supported.
+- **Agents onboard once:** point an agent at a dnr folder and it fetches **[SKILL.md](SKILL.md)** once — then it knows dnr everywhere. Recommended install is `pipx install donotreadagain`; one-off fallback is `uvx --from donotreadagain dnr ...`. `dnr init` just ensures a signing key by default; to persist the bootstrap in an agent instruction file, run `dnr init --agent-file AGENTS.md` (or `--agent-file CLAUDE.md`). To make dnr a global agent habit, run `dnr init --global-agent`; the skill asks agents to do this on first use when supported.
 
 ## Design principles
 
@@ -112,12 +120,12 @@ File = canonical truth                    Index .dnr.db = derived, regenerable
 
 ## Status & honest limits
 
-v0.1 early release. Published on PyPI as `donotreadagain` and usable via `uvx`, `pipx`, or `pip`. Works today for repeat-access corpora; validated by real-corpus dogfooding. Known limits we're explicit about:
+v0.2 early release. Published on PyPI as `donotreadagain`; the recommended path is `pipx install donotreadagain`. `uvx` remains a one-off/fallback path, but it still requires uv and can be slower than a normal install for repeated use. Standalone binaries remain a future packaging option for Python-less environments. Works today for repeat-access corpora; validated by real-corpus dogfooding. Known limits we're explicit about:
 - **Adoption is the real lever.** The value compounds when agents *know* dnr (a skill, eventually native support) — not from the tool alone.
 - **`trusted ≠ faithful`.** A signature proves *who made it + that it matches the file*, not that the transcription is accurate. Low-quality/garbled transcripts are flagged (`dnr status`), not silently trusted.
-- **Coverage is still growing.** PDF/PNG/JPEG/DOCX are useful today; OOXML in-file carriers, more audio/video containers, pre-query auto-scan, and larger-corpus concurrency are still roadmap work.
+- **Coverage is still growing.** PDF/PNG/JPEG/DOCX/XLSX are useful today; OOXML in-file carriers, more audio/video containers, pre-query auto-scan, and larger-corpus concurrency are still roadmap work.
 - **Benchmarks are early.** The README numbers are illustrative dogfood timings; see [BENCHMARKS.md](BENCHMARKS.md) and [experiments/content-hash-invariance](experiments/content-hash-invariance) for the current proof/measurement status. A broader latency/token benchmark remains a release-readiness item.
-- **Python is currently required.** A standalone binary for Python-less environments is future work.
+- **Python is currently required.** Use `pipx` for the cleanest install; a standalone binary for Python-less environments is future work.
 
 See **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
 

@@ -67,7 +67,7 @@ def test_keyword_context_kwic(tmp_path):
     assert len(snips[0]) < 120  # ~±20 chars, not the whole body
 
 
-def test_cli_query_features(tmp_path):
+def test_cli_query_features(tmp_path, capsys):
     from dnr import cli, index, ingest
 
     folder = tmp_path / "c"
@@ -78,4 +78,21 @@ def test_cli_query_features(tmp_path):
     index.scan(folder)
     assert cli.main(["query", str(folder), "--tag", "legal"]) == 0
     assert cli.main(["query", str(folder), "--match", "damages", "--context", "30"]) == 0
+    out = capsys.readouterr().out
+    assert "damages" in out
     assert cli.main(["query", str(folder), "--list", "--sort", "mtime", "--desc"]) == 0
+
+
+def test_cli_context_with_tag_filter(tmp_path, capsys):
+    from dnr import cli, index, ingest
+
+    folder = tmp_path / "c"
+    folder.mkdir()
+    p = folder / "a.pdf"
+    _mkpdf(p, "x")
+    ingest.record_supplied(p, "aaa 표현대리 bbb", "vision", "agent", tags=["법정제출"])
+    index.scan(folder)
+
+    assert cli.main(["query", str(folder), "--tag", "법정제출", "--match", "표현대리", "--context", "5"]) == 0
+    out = capsys.readouterr().out
+    assert "a.pdf" in out and "표현대리" in out

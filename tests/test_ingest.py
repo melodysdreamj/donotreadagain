@@ -12,6 +12,7 @@ def test_ingest_text_extract(sample_pdf):
 
     rec = ingest.ingest(sample_pdf)  # transcriber auto-selected by type (.pdf -> text-extract)
     assert rec["provenance"]["method"] == "text-extract"
+    assert rec["provenance"]["transcriber"] in {"pymupdf", "pypdf"}
     assert rec["content_hash"] == hashing.content_hash(sample_pdf)
     assert "sig" in rec
     got = embed.extract(sample_pdf)

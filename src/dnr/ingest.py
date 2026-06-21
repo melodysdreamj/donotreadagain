@@ -18,7 +18,7 @@ from . import record as _record
 
 #: default local transcriber by extension — audio -> Whisper, born-digital PDF -> text-extract
 DEFAULT_PROVIDER = {
-    ".pdf": "text-extract", ".docx": "docx",
+    ".pdf": "text-extract", ".docx": "docx", ".xlsx": "xlsx",
     ".mp3": "whisper", ".wav": "whisper", ".flac": "whisper",
     ".m4a": "whisper", ".ogg": "whisper", ".opus": "whisper",
 }
@@ -26,7 +26,7 @@ DEFAULT_PROVIDER = {
 TEXT_EXTS = {".txt", ".md", ".json", ".csv", ".tsv", ".log"}
 #: visual/structured types that need an agent/vision transcript via `dnr record`
 AGENT_EXTS = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp", ".heic", ".bmp", ".gif",
-              ".mp4", ".mov", ".mkv", ".webm", ".pptx", ".xlsx", ".html", ".rtf", ".epub"}
+              ".mp4", ".mov", ".mkv", ".webm", ".pptx", ".html", ".rtf", ".epub"}
 
 
 def _mime(path) -> str:
@@ -80,7 +80,8 @@ def _sign_and_store(path, rec: dict, *, sign: bool = True, no_embed: bool = Fals
 
 
 def ingest(path, transcriber: str | None = None, *, sign: bool = True,
-           no_embed: bool = False, force: bool = False) -> dict | None:
+           no_embed: bool = False, force: bool = False,
+           model: str | None = None) -> dict | None:
     """Transcribe with a local provider (auto-selected by type), then record + sign + store.
 
     Already-readable text (.txt/.md/.csv/…) needs no transcription and **no record at all** —
@@ -102,13 +103,76 @@ def ingest(path, transcriber: str | None = None, *, sign: bool = True,
                 f"{ext} needs visual/agent transcription — transcribe it yourself and run "
                 f"`dnr record <file> --transcript-file <t.md> --method vision ...` (see `dnr guide`)")
         raise ValueError(f"unsupported file type '{ext}' for ingest; see `dnr types`")
-    res = transcribe.get(transcriber)(path)
+    if transcriber == "whisper":
+        res = transcribe.whisper_transcribe(path, model_size=model or transcribe.DEFAULT_WHISPER_MODEL)
+    else:
+        res = transcribe.get(transcriber)(path)
     prov = {"method": res.method, "transcriber": res.transcriber}
     if res.confidence is not None:
         prov["confidence"] = res.confidence
     rec = make_record(path, res.text, prov, lang=res.lang or transcribe.detect_lang(res.text),
                       segments=res.segments)
     return _sign_and_store(path, rec, sign=sign, no_embed=no_embed)
+
+
+def backfill(folder, *, no_embed: bool = False, force: bool = False,
+             model: str | None = None) -> dict:
+    """Ingest a folder's locally processable files and return a machine-readable worklist.
+
+    This deliberately does **not** do agent/vision work. Images, videos, and scanned/garbled
+    results are reported for an agent to handle with `dnr record`.
+    """
+    import os
+    import unicodedata
+
+    from . import index
+
+    root = Path(folder)
+    stats = {
+        "ingested": [],
+        "already": [],
+        "text": [],
+        "agent_needed": [],
+        "low_quality": [],
+        "errors": [],
+    }
+
+    def rel(p) -> str:
+        return unicodedata.normalize("NFC", os.path.relpath(p, root))
+
+    for abspath in index._iter_files(root):
+        p = Path(abspath)
+        ext = p.suffix.lower()
+        r = rel(p)
+        if ext in TEXT_EXTS:
+            stats["text"].append(r)
+            continue
+        if ext in AGENT_EXTS:
+            stats["agent_needed"].append({"path": r, "reason": "needs agent/vision transcript"})
+            continue
+        if ext not in DEFAULT_PROVIDER:
+            stats["agent_needed"].append({"path": r, "reason": "no local provider"})
+            continue
+        try:
+            existed = _already_ours(p) is not None
+            rec = ingest(p, no_embed=no_embed, force=force, model=model)
+            if rec is None:
+                stats["text"].append(r)
+                continue
+            item = {"path": r, "method": rec["provenance"]["method"],
+                    "transcriber": rec["provenance"]["transcriber"]}
+            if existed and not force:
+                stats["already"].append(item)
+            else:
+                stats["ingested"].append(item)
+            txt = (rec.get("transcript") or {}).get("text") or ""
+            if transcribe.is_low_quality(txt):
+                stats["low_quality"].append({"path": r, "reason": "empty/garbled/unusable transcript"})
+        except Exception as exc:
+            stats["errors"].append({"path": r, "error": str(exc)})
+
+    stats["index"] = index.scan(root)
+    return stats
 
 
 def record_supplied(path, transcript_text: str, method: str = "vision",

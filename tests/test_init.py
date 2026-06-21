@@ -112,7 +112,8 @@ def test_skill_md_is_fetchable_skill(tmp_path, capsys):
     for marker in ("read once, never again", "## A. One specific file", "## B. A folder-wide question",
                    "permission gate", "uvx --from donotreadagain dnr", "dnr init --agent-file AGENTS.md",
                    "exact package name", "dnr init --global-agent", "Install this habit globally",
-                   "opportunistic cache, not a crawler", "quality repair"):
+                   "opportunistic cache, not a crawler", "quality repair", "cache/trust/index layer",
+                   "openpyxl", "faster-whisper", "pipx install donotreadagain", "dnr backfill"):
         assert marker in md
     assert cli.main(["skill"]) == 0
     assert "name: dnr" in capsys.readouterr().out

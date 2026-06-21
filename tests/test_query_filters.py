@@ -97,6 +97,22 @@ def test_any_terms_or(tmp_path):
     assert {r["path"] for r in index.query_compose(f, any_terms=["가압류", "보전"])} == {"a.pdf", "b.pdf"}
 
 
+def test_any_tags_or(tmp_path):
+    from dnr import index, ingest
+
+    f = tmp_path / "f"
+    f.mkdir()
+    _mkpdf(f / "a.pdf")
+    _mkpdf(f / "b.pdf")
+    _mkpdf(f / "c.pdf")
+    ingest.record_supplied(f / "a.pdf", "body", tags=["우리측"])
+    ingest.record_supplied(f / "b.pdf", "body", tags=["상대측"])
+    ingest.record_supplied(f / "c.pdf", "body", tags=["기타"])
+    index.scan(f)
+
+    assert {r["path"] for r in index.query_compose(f, any_tags=["우리측", "상대측"])} == {"a.pdf", "b.pdf"}
+
+
 def test_low_quality_heuristic_and_records(tmp_path):
     from dnr import index, ingest, transcribe
 

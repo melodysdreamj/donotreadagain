@@ -88,6 +88,38 @@ def test_coverage_reports_expensive_cache_gaps(tmp_path):
     assert c["should_offer_transcribe"] is True
 
 
+def test_coverage_counts_usable_not_low_quality(tmp_path):
+    from dnr import index, ingest
+
+    folder = tmp_path / "quality"
+    folder.mkdir()
+    txt = folder / "memo.txt"
+    txt.write_text("이미 텍스트라 전사 불필요", encoding="utf-8")
+    _mkpdf(folder / "bad.pdf", "x")
+    ingest.record_supplied(folder / "bad.pdf", "Ã¬ÂÂ Ã«Â¬Â´Ã¬Â²Â­ Â°Â¡Â¾Ð")
+    index.scan(folder)
+
+    c = index.coverage(folder)
+    assert c["total"] == 2
+    assert c["recorded"] == 2
+    assert c["usable"] == 1
+    assert c["needs_repair"] == 1
+    assert c["repair_parse"] == 1
+    assert c["repair_list"][0]["path"] == "bad.pdf"
+
+
+def test_open_db_sets_busy_timeout(tmp_path):
+    from dnr import index
+
+    folder = tmp_path / "db"
+    folder.mkdir()
+    con = index.open_db(folder)
+    try:
+        assert con.execute("PRAGMA busy_timeout").fetchone()[0] == 5000
+    finally:
+        con.close()
+
+
 def test_filename_is_searchable(tmp_path):
     """A term in the filename (not the body) is found via FTS over the name column."""
     from PIL import Image

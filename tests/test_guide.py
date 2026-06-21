@@ -27,6 +27,7 @@ def test_formats_matrix_render():
     from dnr import formats
 
     out = formats.render()
-    assert ".pdf" in out and ".mp3" in out and "asr (Whisper" in out
+    assert ".pdf" in out and ".mp3" in out and ".xlsx" in out
+    assert "PyMuPDF" in out and "openpyxl" in out and "asr (Whisper" in out
     assert all(s in {"implemented", "partial", "planned", "n/a"}
                for *_, s in formats.SUPPORTED.values())

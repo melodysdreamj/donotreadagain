@@ -1,4 +1,4 @@
-"""Format coverage: images (content_hash + agent record) and docx (local extract)."""
+"""Format coverage: images (content_hash + agent record), DOCX, and XLSX."""
 import pytest
 
 
@@ -79,6 +79,69 @@ def test_docx_bytes_unchanged_by_ingest(tmp_path):
     h0 = hashing.content_hash(p)
     ingest.ingest(p)  # writes a db-only record; the .docx zip is not touched
     assert hashing.content_hash(p) == h0
+
+
+def test_xlsx_ingest_local(tmp_path):
+    from openpyxl import Workbook
+
+    from dnr import embed, hashing, index, ingest
+
+    folder = tmp_path / "s"
+    folder.mkdir()
+    p = folder / "ledger.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Payments"
+    ws.append(["Party", "Amount", "Status"])
+    ws.append(["Acme", 1200000, "paid"])
+    wb.save(str(p))
+
+    rec = ingest.ingest(p)
+    assert rec["provenance"]["transcriber"] == "openpyxl"
+    assert "Payments" in rec["transcript"]["text"]
+    assert "Acme\t1200000\tpaid" in rec["transcript"]["text"]
+    assert rec["content_hash"] == hashing.content_hash(p)
+    assert embed.extract(p) is None  # xlsx has no in-file carrier yet -> db-only
+    assert index.db_only_record(folder, p) == rec
+    assert index.query_match(folder, "Acme") == ["ledger.xlsx"]
+
+
+def test_backfill_folder_ingests_local_and_lists_agent_needed(tmp_path):
+    import docx
+    from openpyxl import Workbook
+
+    from dnr import index, ingest
+
+    folder = tmp_path / "bf"
+    folder.mkdir()
+
+    pdf = folder / "contract.pdf"
+    from fpdf import FPDF
+
+    p = FPDF()
+    p.add_page()
+    p.set_font("Helvetica", size=12)
+    p.cell(0, 8, "contract renewal damages")
+    p.output(str(pdf))
+
+    d = docx.Document()
+    d.add_paragraph("docx approval memo")
+    d.save(str(folder / "memo.docx"))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Party", "Amount"])
+    ws.append(["Acme", 42])
+    wb.save(str(folder / "ledger.xlsx"))
+
+    _mkpng(folder / "scan.png")
+
+    stats = ingest.backfill(folder)
+    assert {x["path"] for x in stats["ingested"]} == {"contract.pdf", "memo.docx", "ledger.xlsx"}
+    assert stats["agent_needed"] == [{"path": "scan.png", "reason": "needs agent/vision transcript"}]
+    assert stats["errors"] == []
+    assert index.query_match(folder, "Acme") == ["ledger.xlsx"]
+    assert index.query_match(folder, "approval") == ["memo.docx"]
 
 
 def test_db_only_record_removed_when_source_changes(tmp_path):

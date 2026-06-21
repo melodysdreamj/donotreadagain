@@ -1,8 +1,4 @@
-"""dnr command-line interface (M7).
-
-Implemented: keygen · ingest · record · read · verify · guide · types.
-Coming (M5/M7): index · query · init · seal · strip.
-"""
+"""dnr command-line interface."""
 from __future__ import annotations
 
 import argparse
@@ -23,7 +19,12 @@ def _cmd_keygen(args) -> int:
 def _cmd_ingest(args) -> int:
     from . import ingest
 
-    rec = ingest.ingest(args.file, transcriber=args.transcriber, no_embed=args.no_embed, force=args.force)
+    if Path(args.file).is_dir():
+        stats = ingest.backfill(args.file, no_embed=args.no_embed, force=args.force, model=args.model)
+        return _emit_backfill(args.file, stats, args.format or "plain")
+
+    rec = ingest.ingest(args.file, transcriber=args.transcriber, no_embed=args.no_embed,
+                        force=args.force, model=args.model)
     if rec is None:
         print(f"{args.file}: already-readable text — no transcription or record needed (read it directly)")
         return 0
@@ -41,6 +42,43 @@ def _cmd_ingest(args) -> int:
               f"encoding. Redo via vision: `dnr record {args.file} --transcript-file <t.md> --method vision "
               f"--transcriber <your-model>`", file=sys.stderr)
     return 0
+
+
+def _emit_backfill(folder, stats: dict, fmt: str = "plain") -> int:
+    if fmt == "json":
+        import json
+
+        print(json.dumps(stats, ensure_ascii=False, indent=2))
+        return 0 if not stats.get("errors") else 1
+
+    print(f"backfilled {folder}: {len(stats['ingested'])} ingested, {len(stats['already'])} already cached, "
+          f"{len(stats['agent_needed'])} need agent/vision, {len(stats['low_quality'])} need repair, "
+          f"{len(stats['errors'])} errors")
+    idx = stats.get("index") or {}
+    if idx:
+        print(f"indexed {folder}: +{idx.get('indexed', 0)} new, {idx.get('skipped', 0)} skipped, "
+              f"{idx.get('removed', 0)} removed, {idx.get('untrusted', 0)} untrusted, "
+              f"{idx.get('errored', 0)} errored")
+    if stats["agent_needed"]:
+        print("\nagent/vision needed:")
+        for item in stats["agent_needed"]:
+            print(f"  {item['path']} — {item['reason']}")
+    if stats["low_quality"]:
+        print("\nquality repair needed:")
+        for item in stats["low_quality"]:
+            print(f"  {item['path']} — {item['reason']}")
+    if stats["errors"]:
+        print("\nerrors:", file=sys.stderr)
+        for item in stats["errors"]:
+            print(f"  {item['path']} — {item['error']}", file=sys.stderr)
+    return 0 if not stats["errors"] else 1
+
+
+def _cmd_backfill(args) -> int:
+    from . import ingest
+
+    stats = ingest.backfill(args.folder, no_embed=args.no_embed, force=args.force, model=args.model)
+    return _emit_backfill(args.folder, stats, args.format or "plain")
 
 
 def _cmd_record(args) -> int:
@@ -140,8 +178,10 @@ def _cmd_query(args) -> int:
             return 1
     else:
         tags = [t.strip() for t in args.tag.split(",") if t.strip()] if args.tag else []
+        any_tags = [t.strip() for t in args.any_tag.split(",") if t.strip()] if args.any_tag else []
         anys = [t.strip() for t in args.any.split(",") if t.strip()] if args.any else []
-        expr = {"match": args.match, "any": anys, "tags": tags, "since": args.since, "until": args.until,
+        expr = {"match": args.match, "any": anys, "tags": tags, "any_tags": any_tags,
+                "since": args.since, "until": args.until,
                 "where": args.where, "sort": args.sort, "desc": args.desc,
                 "dedup": args.dedup, "min_chars": args.min_chars}
 
@@ -161,27 +201,40 @@ def _cmd_query(args) -> int:
             prefix = f"{(r.get(sort_col) if r.get(sort_col) is not None else '—'):<12}\t" if sort_col else ""
             print((prefix + r["path"] + (f"\t{r['title']}" if r.get("title") else "")).rstrip())
 
-    composed = (expr.get("any") or expr.get("tags") or expr.get("since") or expr.get("until")
+    def _emit_context(rows, term: str):
+        from . import index as _index
+
+        if fmt == "json":
+            import json as _j
+
+            print(_j.dumps([
+                {"path": r["path"], "snippets": _index._snippets((r.get("transcript") or ""), term, args.context)}
+                for r in rows
+            ], ensure_ascii=False, indent=2))
+            return
+        for r in rows:
+            print(r["path"])
+            for s in _index._snippets((r.get("transcript") or ""), term, args.context):
+                print(f"    … {s}")
+
+    composed = (expr.get("any") or expr.get("tags") or expr.get("any_tags") or expr.get("since") or expr.get("until")
                 or expr.get("where") or expr.get("dedup") or expr.get("min_chars"))
     has_filter = expr.get("match") or composed
 
-    if expr.get("match") and args.context is not None and not composed:  # KWIC
-        results = index.search_context(args.folder, expr["match"], radius=args.context)
-        for path, snips in results:
-            print(path)
-            for s in snips:
-                print(f"    … {s}")
-        rows = [{"path": p} for p, _ in results]
-    elif not has_filter and (args.list or args.use):  # inventory
+    if not has_filter and (args.list or args.use):  # inventory
         rows = index.list_all(args.folder, sort=expr.get("sort") or "path", desc=expr.get("desc"))
         _emit(rows)
     elif has_filter:  # composed: match ∩ tag ∩ time ∩ where
         rows = index.query_compose(
             args.folder, match=expr.get("match"), any_terms=expr.get("any"), tags=expr.get("tags"),
+            any_tags=expr.get("any_tags"),
             since=expr.get("since"), until=expr.get("until"), where=expr.get("where"),
             sort=expr.get("sort"), desc=expr.get("desc"), dedup=expr.get("dedup"),
             min_chars=expr.get("min_chars"))
-        _emit(rows)
+        if expr.get("match") and args.context is not None:
+            _emit_context(rows, expr["match"])
+        else:
+            _emit(rows)
     else:
         print("dnr query: --match/--tag/--since/--until/--where [--context N] [--dedup] [--format json],"
               " --list, or --use LABEL", file=sys.stderr)
@@ -249,6 +302,8 @@ def _cmd_queries(args) -> int:
                 parts.append(f"{k}:{e[k]}")
         if e.get("tags"):
             parts.append("tags:" + ",".join(e["tags"]))
+        if e.get("any_tags"):
+            parts.append("any-tags:" + ",".join(e["any_tags"]))
         print(f"{r['label']}\t{' '.join(parts)}\t(runs:{r['run_count']}, last_hits:{r['last_hits']})")
     return 0
 
@@ -257,38 +312,49 @@ def _cmd_status(args) -> int:
     from . import index
 
     c = index.coverage(args.folder)
+    if (args.format or "plain") == "json":
+        import json
+
+        print(json.dumps(c, ensure_ascii=False, indent=2))
+        return 0
     if c["total"] == 0:
         print(f"{args.folder}: no supported files found")
         return 0
-    print(f"{args.folder}: {c['recorded']}/{c['total']} files have a cached transcript "
-          f"({c['pending']} pending)")
+    print(f"{args.folder}: {c['usable']}/{c['total']} files have a usable cached transcript "
+          f"({c['recorded']} cached, {c['pending']} pending, {c['needs_repair']} need repair)")
     labels = {"model": "images/audio/video (need a model each view)",
               "parse": "PDF/Office (expensive to re-parse)",
               "cheap": "text (no transcription needed)"}
     for kind in ("model", "parse", "cheap"):
         total, rec = c["by_kind"][kind]
         if total:
-            print(f"  {labels[kind]:42} {rec}/{total} transcribed")
-    lq = index.low_quality_records(args.folder)
-    if lq:
-        print(f"  {'low-quality transcripts (empty/mojibake)':42} {len(lq)} — redo via `dnr record` (vision)")
+            usable = c["by_kind_usable"][kind][1]
+            repair = sum(1 for p in c["repair_list"] if p["kind"] == kind)
+            detail = f"{usable}/{total} usable"
+            if repair:
+                detail += f" ({repair} repair)"
+            elif rec != usable:
+                detail += f" ({rec} cached)"
+            print(f"  {labels[kind]:42} {detail}")
     if args.pending:
         pend = [p for p in c["pending_list"] if p["kind"] != "cheap"]
-        if not pend and not lq:
+        repair = [p for p in c["repair_list"] if p["kind"] != "cheap"]
+        if not pend and not repair:
             print("\nnothing pending.")
         if pend:
             print(f"\npending transcription ({len(pend)}):")
             for p in pend:
                 print(f"  [{p['kind']}] {p['path']}")
-        if lq:
-            print(f"\nlow-quality — redo via vision ({len(lq)}):")
-            for p in lq:
-                print(f"  [low-quality] {p}")
+        if repair:
+            print(f"\nlow-quality — repair/re-OCR ({len(repair)}):")
+            for p in repair:
+                print(f"  [{p['kind']}] {p['path']}")
         return 0
     if c["should_offer_transcribe"]:
         print()
-        print(f"expensive files still uncached: {c['pending_model']} model-only + "
-              f"{c['pending_parse']} parse-heavy (`dnr status <folder> --pending` to list).")
+        print(f"expensive cache gaps: {c['pending_model']} model-only pending + "
+              f"{c['pending_parse']} parse-heavy pending + {c['repair_model'] + c['repair_parse']} repairs "
+              f"(`dnr status <folder> --pending` to list).")
         print("Do not pre-transcribe just because they are pending. When the current task needs one, "
               "read/transcribe it once and cache it, then:")
         print("  dnr ingest <born-digital> · dnr record <image/audio/video> · dnr index <folder>")
@@ -373,10 +439,23 @@ def _build_parser() -> argparse.ArgumentParser:
     pi = sub.add_parser("ingest", help="transcribe (local, auto by type) + record + sign + embed")
     pi.add_argument("file")
     pi.add_argument("--transcriber", default=None, help="override the local provider (text-extract, whisper)")
+    pi.add_argument("--model", default=None,
+                    help="Whisper model for audio ingest/backfill (default: small; e.g. base|small|medium)")
     pi.add_argument("--no-embed", action="store_true",
                     help="store db-only (leave the original byte-identical; explicit no-modification mode)")
     pi.add_argument("--force", action="store_true", help="re-ingest even if a valid record exists")
+    pi.add_argument("--format", choices=["plain", "json"], help="folder ingest output format")
     pi.set_defaults(fn=_cmd_ingest)
+
+    pb = sub.add_parser("backfill", help="ingest locally-processable files in a folder; list agent-needed gaps")
+    pb.add_argument("folder")
+    pb.add_argument("--model", default=None,
+                    help="Whisper model for audio files (default: small; e.g. base|small|medium)")
+    pb.add_argument("--no-embed", action="store_true",
+                    help="store db-only (leave originals byte-identical; explicit no-modification mode)")
+    pb.add_argument("--force", action="store_true", help="re-ingest even if valid records exist")
+    pb.add_argument("--format", choices=["plain", "json"], help="output format")
+    pb.set_defaults(fn=_cmd_backfill)
 
     pr = sub.add_parser("record", help="record an agent-supplied transcript (follows the verbatim guide)")
     pr.add_argument("file")
@@ -404,6 +483,7 @@ def _build_parser() -> argparse.ArgumentParser:
     pst = sub.add_parser("status", help="folder transcript coverage + pending cache gaps")
     pst.add_argument("folder")
     pst.add_argument("--pending", action="store_true", help="list the files still needing transcription")
+    pst.add_argument("--format", choices=["plain", "json"], help="output format")
     pst.set_defaults(fn=_cmd_status)
 
     pd = sub.add_parser("date", help="show/set/clear a file's start_date (optional; dnr never infers it)")
@@ -423,6 +503,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pq.add_argument("--context", nargs="?", const=200, type=int, metavar="N",
                     help="with --match: show ±N chars around each hit (default 200)")
     pq.add_argument("--tag", help="tag(s) the file must have; comma-separated = AND (e.g. 가압류,2025)")
+    pq.add_argument("--any-tag", dest="any_tag",
+                    help="tag(s) where any may match; comma-separated = OR (e.g. 우리측,상대측)")
     pq.add_argument("--since", help="start_date >= (e.g. 2025-01-01)")
     pq.add_argument("--until", help="start_date <= (e.g. 2026-06-30)")
     pq.add_argument("--where", help="SQL WHERE over the fixed columns")

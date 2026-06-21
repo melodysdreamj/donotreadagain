@@ -1,6 +1,6 @@
 [project]
 name = "donotreadagain"
-version = "0.1.8"
+version = "0.2.0"
 description = "Read once, never again — self-describing files so AI agents stop re-parsing."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -10,12 +10,14 @@ keywords = ["ai", "agents", "metadata", "transcript", "cache", "pdf", "xmp", "se
 dependencies = [
   "pikepdf>=8",
   "mutagen",
+  "PyMuPDF",
   "pypdf",
   "rfc8785",
   "cryptography",
   "jsonschema",
   "pillow",
   "python-docx",
+  "openpyxl",
 ]
 
 [project.urls]
@@ -25,6 +27,7 @@ Issues = "https://github.com/melodysdreamj/donotreadagain/issues"
 
 [project.optional-dependencies]
 dev = ["pytest", "fpdf2"]
+audio = ["faster-whisper"]
 
 [project.scripts]
 dnr = "dnr.cli:main"

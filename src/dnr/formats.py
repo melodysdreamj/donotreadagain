@@ -9,10 +9,10 @@ from __future__ import annotations
 
 SUPPORTED: dict[str, tuple[str, str, str, str]] = {
     # --- documents (visual / layout) ---
-    ".pdf":  ("document",    "text-extract (text layer) / vision (scan)", "XMP (in-file)",   "partial"),
+    ".pdf":  ("document",    "text-extract (PyMuPDF→pypdf) / vision (scan)", "XMP (in-file)", "partial"),
     ".docx": ("document",    "text-extract (python-docx, local)",         "db-only",         "implemented"),
     ".pptx": ("document",    "text-extract + vision",                     "db-only",         "planned"),
-    ".xlsx": ("spreadsheet", "table-extract -> summary+schema",           "db-only",         "planned"),
+    ".xlsx": ("spreadsheet", "table-extract (openpyxl, local)",           "db-only",         "implemented"),
     ".html": ("document",    "text-extract",                              "db-only",         "planned"),
     ".rtf":  ("document",    "text-extract",                              "db-only",         "planned"),
     ".epub": ("document",    "text-extract",                              "db-only",         "planned"),
@@ -29,7 +29,7 @@ SUPPORTED: dict[str, tuple[str, str, str, str]] = {
     ".flac": ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
     ".ogg":  ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
     ".opus": ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
-    ".m4a":  ("audio",       "asr (Whisper, local)",                      "db-only",         "planned"),
+    ".m4a":  ("audio",       "asr (Whisper, local, audio extra)",         "db-only",         "partial"),
     # --- video ---
     ".mp4":  ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),
     ".mov":  ("video",       "asr (audio) + vision (keyframes)",          "db-only",         "planned"),

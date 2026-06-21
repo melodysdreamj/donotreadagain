@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS _dnr_readme (k TEXT PRIMARY KEY, v TEXT);
 """
 
 # Self-describing: an agent that opens this .db cold (`sqlite3 .dnr.db "SELECT * FROM _dnr_readme"`)
-# learns what it is and can read transcripts with **no install**, before ever finding the dnr tool.
+# learns what it is and can read transcripts before ever finding the dnr CLI.
 _README = {
     "1_what": "This SQLite file is a donotreadagain (dnr) cache — faithful transcripts of this folder's "
               "PDFs/images/audio/scans, so an AI agent READs them here instead of re-OCR/re-parsing. "
@@ -63,8 +63,9 @@ _README = {
     "4_integrity": "Two hashes: `content_hash` = sha256 of DECODED content (identity, survives re-embed); "
                    "`whole_hash` = sha256 of the file's RAW bytes. To check a file is unchanged, compare its "
                    "raw-bytes sha256 to whole_hash (NOT content_hash).",
-    "5_more": f"Full tool + spec + agent skill: {bootstrap.HOME_URL}  (run with no install: "
-              f"`uvx --from donotreadagain dnr ...`). Only signed, trusted records are indexed here.",
+    "5_more": f"Full tool + spec + agent skill: {bootstrap.HOME_URL}  (recommended install: "
+              "`pipx install donotreadagain`; one-off fallback: "
+              "`uvx --from donotreadagain dnr ...`). Only signed, trusted records are indexed here.",
 }
 
 
@@ -76,15 +77,29 @@ def db_path(folder) -> str:
     return os.path.join(str(folder), DB_NAME)
 
 
-def open_db(folder) -> sqlite3.Connection:
-    con = sqlite3.connect(db_path(folder))
+def open_db(folder, *, write: bool = True) -> sqlite3.Connection:
+    path = db_path(folder)
+    if write:
+        con = sqlite3.connect(path)
+    else:
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
     con.row_factory = sqlite3.Row
-    con.execute("PRAGMA journal_mode=WAL")
-    con.executescript(SCHEMA)
-    con.execute("DELETE FROM _dnr_readme")  # keep the self-description current with the tool version
+    con.execute("PRAGMA busy_timeout=5000")
+    if write:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.executescript(SCHEMA)
+        _ensure_readme(con)
+    return con
+
+
+def _ensure_readme(con: sqlite3.Connection) -> None:
+    """Keep the self-description current, but only write when it actually changed."""
+    current = {r["k"]: r["v"] for r in con.execute("SELECT k, v FROM _dnr_readme")}
+    if current == _README:
+        return
+    con.execute("DELETE FROM _dnr_readme")
     con.executemany("INSERT INTO _dnr_readme(k, v) VALUES (?, ?)", list(_README.items()))
     con.commit()
-    return con
 
 
 def _iter_files(folder):
@@ -143,7 +158,7 @@ def put_record(folder, abspath, rec: dict) -> None:
     and tombstones it when the source changes or disappears."""
     folder = str(folder)
     rel = _nfc(os.path.relpath(abspath, folder))
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         _store(con, abspath, rel, rec, os.stat(abspath), "db", json.dumps(rec, ensure_ascii=False))
         con.commit()
@@ -154,7 +169,7 @@ def put_record(folder, abspath, rec: dict) -> None:
 def remove_record(folder, abspath) -> bool:
     """Remove a db-only record for a file. True if one was present."""
     rel = _nfc(os.path.relpath(abspath, str(folder)))
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         hit = con.execute("SELECT 1 FROM dnr WHERE path=? AND origin='db'", (rel,)).fetchone()
         if hit:
@@ -170,7 +185,7 @@ def db_only_record(folder, abspath) -> dict | None:
     if not os.path.exists(db_path(folder)):
         return None
     rel = _nfc(os.path.relpath(abspath, str(folder)))
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         row = con.execute("SELECT record_json FROM dnr WHERE path=? AND origin='db'", (rel,)).fetchone()
         return json.loads(row["record_json"]) if row and row["record_json"] else None
@@ -182,7 +197,7 @@ def scan(folder, trust: dict | None = None) -> dict:
     """Incrementally bring the folder's index up to date. Only trusted records are indexed."""
     folder = str(folder)
     trust = keyring.default_trust() if trust is None else trust
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         existing = {r["path"]: r for r in con.execute("SELECT path, bytes, mtime, origin, record_json FROM dnr")}
         seen_paths: set[str] = set()
@@ -307,7 +322,7 @@ def query_match(folder, text: str) -> list[str]:
     Trigram FTS for 3+ char terms; a substring (LIKE) fallback for shorter terms (e.g.
     2-char CJK like 계약/이혼/특허), which also covers the filename.
     """
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         term = _nfc(text.strip())
         if len(term) < 3:
@@ -330,7 +345,7 @@ def query_match(folder, text: str) -> list[str]:
 
 def query_tag(folder, tag: str, sort: str | None = None, desc: bool = False) -> list[dict]:
     """Files whose `fields.tags` JSON array contains `tag`."""
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         sql = ("SELECT * FROM dnr WHERE tags IS NOT NULL AND EXISTS "
                "(SELECT 1 FROM json_each(dnr.tags) WHERE json_each.value = ?)"
@@ -343,7 +358,7 @@ def query_tag(folder, tag: str, sort: str | None = None, desc: bool = False) -> 
 def query_where(folder, where: str, params: tuple = (), sort: str | None = None,
                 desc: bool = False) -> list[dict]:
     """Structured query over fixed columns with a small read-only expression guard."""
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         where = _validate_where(where)
         rows = con.execute(f"SELECT * FROM dnr WHERE {where}{_order_sql(sort, desc)}", params).fetchall()
@@ -354,7 +369,7 @@ def query_where(folder, where: str, params: tuple = (), sort: str | None = None,
 
 def list_all(folder, sort: str | None = "path", desc: bool = False) -> list[dict]:
     """Return every indexed row (the inventory)."""
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         return [dict(r) for r in con.execute("SELECT * FROM dnr" + _order_sql(sort, desc))]
     finally:
@@ -374,14 +389,15 @@ def _match_cond(term: str):
 
 
 def query_compose(folder, *, match: str | None = None, any_terms: list | None = None,
-                  tags: list | None = None, since: str | None = None, until: str | None = None,
+                  tags: list | None = None, any_tags: list | None = None,
+                  since: str | None = None, until: str | None = None,
                   where: str | None = None, sort: str | None = None, desc: bool = False,
                   dedup: bool = False, min_chars: int | None = None) -> list[dict]:
     """One composed query: AND together a text `match`, one or more `tags` (all must be present),
     a `start_date` range (`since`/`until`), and an optional raw `where`. The heart of query memory —
     `tag ∩ tag ∩ time ∩ text`. `dedup` collapses identical-content files (content_hash); `min_chars`
     drops near-empty (low-quality) transcripts."""
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         conds, params = [], []
         if match:  # all match-terms ANDed (here a single required term)
@@ -398,6 +414,13 @@ def query_compose(folder, *, match: str | None = None, any_terms: list | None = 
         for t in (tags or []):
             conds.append("EXISTS (SELECT 1 FROM json_each(dnr.tags) WHERE json_each.value = ?)")
             params.append(_nfc(t))
+        if any_tags:
+            ors = []
+            for t in any_tags:
+                ors.append("EXISTS (SELECT 1 FROM json_each(dnr.tags) WHERE json_each.value = ?)")
+                params.append(_nfc(t))
+            if ors:
+                conds.append("(" + " OR ".join(ors) + ")")
         if since:
             conds.append("dnr.start_date >= ?"); params.append(since)
         if until:
@@ -426,7 +449,7 @@ def query_compose(folder, *, match: str | None = None, any_terms: list | None = 
 
 # ----------------------------------------------------------------- saved queries
 def save_query(folder, label: str, expr: dict, note: str | None = None) -> None:
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         con.execute(
             "INSERT INTO dnr_queries(label, expr, note) VALUES (?,?,?) "
@@ -438,7 +461,7 @@ def save_query(folder, label: str, expr: dict, note: str | None = None) -> None:
 
 
 def get_query(folder, label: str) -> dict | None:
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         r = con.execute("SELECT expr FROM dnr_queries WHERE label=?", (label,)).fetchone()
         return json.loads(r["expr"]) if r else None
@@ -447,7 +470,7 @@ def get_query(folder, label: str) -> dict | None:
 
 
 def list_queries(folder) -> list[dict]:
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         return [dict(r) for r in con.execute(
             "SELECT * FROM dnr_queries ORDER BY last_run IS NULL, last_run DESC, label")]
@@ -456,7 +479,7 @@ def list_queries(folder) -> list[dict]:
 
 
 def log_query_run(folder, label: str, hits: int) -> None:
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         con.execute("UPDATE dnr_queries SET run_count=run_count+1, last_run=?, last_hits=? WHERE label=?",
                     (datetime.now(timezone.utc).isoformat(), hits, label))
@@ -472,7 +495,7 @@ def reindex_file(folder, abspath) -> None:
     rec = _embed.extract(abspath)
     if rec is None:
         return
-    con = open_db(folder)
+    con = open_db(folder, write=True)
     try:
         _store(con, abspath, _nfc(os.path.relpath(abspath, str(folder))), rec, os.stat(abspath), "file")
         con.commit()
@@ -486,7 +509,7 @@ def low_quality_records(folder) -> list[str]:
 
     if not os.path.exists(db_path(folder)):
         return []
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         return [r["path"] for r in con.execute("SELECT path, transcript FROM dnr")
                 if is_low_quality(r["transcript"])]
@@ -510,7 +533,7 @@ def _snippets(text: str, term: str, radius: int = 200, max_hits: int = 3) -> lis
 
 def search_context(folder, term: str, radius: int = 200, max_hits: int = 3) -> list[tuple]:
     """For each file matching `term`, return (path, [±radius-char snippets around it])."""
-    con = open_db(folder)
+    con = open_db(folder, write=False)
     try:
         out = []
         for p in query_match(folder, term):
@@ -531,16 +554,20 @@ _COST = {"image": "model", "audio": "model", "video": "model",
 def coverage(folder) -> dict:
     """How many supported files already carry a transcript vs still need one.
 
-    Fast: checks record *presence*, not content rehash. Pending expensive files are cache gaps
-    to fill only when the current task already requires reading/parsing those files.
+    Pending expensive files and low-quality cached records are cache gaps to fill only when
+    the current task already requires reading/parsing those files.
     """
+    from .transcribe import is_low_quality
+
     by_kind = {"model": [0, 0], "parse": [0, 0], "cheap": [0, 0]}  # kind -> [total, recorded]
+    by_kind_usable = {"model": [0, 0], "parse": [0, 0], "cheap": [0, 0]}  # kind -> [total, usable]
     pending = []
-    db_only = set()
+    repair = []
+    indexed_text: dict[str, str | None] = {}
     if os.path.exists(db_path(folder)):
-        con = sqlite3.connect(db_path(folder))
+        con = open_db(folder, write=False)
         try:
-            db_only = {r[0] for r in con.execute("SELECT path FROM dnr WHERE origin='db'")}
+            indexed_text = {r["path"]: r["transcript"] for r in con.execute("SELECT path, transcript FROM dnr")}
         finally:
             con.close()
     for abspath in _iter_files(folder):
@@ -549,22 +576,39 @@ def coverage(folder) -> dict:
         modality = (SUPPORTED.get(ext) or ("text",))[0]
         kind = _COST.get(modality, "parse")
         # already-readable text needs no record at all -> always "covered"
-        has_record = kind == "cheap" or rel in db_only or _embed.extract(abspath) is not None
+        rec = None
+        text = indexed_text.get(rel)
+        has_record = kind == "cheap" or rel in indexed_text
+        if not has_record:
+            rec = _embed.extract(abspath)
+            has_record = rec is not None
+            text = ((rec or {}).get("transcript") or {}).get("text")
+        low_quality = bool(has_record and kind != "cheap" and is_low_quality(text))
         by_kind[kind][0] += 1
+        by_kind_usable[kind][0] += 1
         if has_record:
             by_kind[kind][1] += 1
-        else:
+        if kind == "cheap" or (has_record and not low_quality):
+            by_kind_usable[kind][1] += 1
+        if low_quality:
+            repair.append({"kind": kind, "modality": modality, "path": rel})
+        elif not has_record:
             pending.append({"kind": kind, "modality": modality,
                             "path": _nfc(os.path.relpath(abspath, folder))})
     total = sum(v[0] for v in by_kind.values())
     recorded = sum(v[1] for v in by_kind.values())
+    usable = sum(v[1] for v in by_kind_usable.values())
     return {
-        "total": total, "recorded": recorded, "pending": total - recorded,
-        "by_kind": by_kind,
+        "total": total, "recorded": recorded, "usable": usable,
+        "pending": total - recorded, "needs_repair": len(repair),
+        "by_kind": by_kind, "by_kind_usable": by_kind_usable,
         "pending_model": sum(1 for p in pending if p["kind"] == "model"),
         "pending_parse": sum(1 for p in pending if p["kind"] == "parse"),
+        "repair_model": sum(1 for p in repair if p["kind"] == "model"),
+        "repair_parse": sum(1 for p in repair if p["kind"] == "parse"),
         # Kept for compatibility: true when pending files would be expensive if the current task
         # actually needs them. This is a cache-gap signal, not a request to pre-transcribe a corpus.
-        "should_offer_transcribe": any(p["kind"] in ("model", "parse") for p in pending),
+        "should_offer_transcribe": any(p["kind"] in ("model", "parse") for p in pending + repair),
         "pending_list": pending,
+        "repair_list": repair,
     }

@@ -3,6 +3,22 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.2.0 - 2026-06-21
+
+### Changed
+- Prefer PyMuPDF for PDF text extraction with pypdf fallback for better Korean/CJK results.
+- Add local XLSX extraction via openpyxl.
+- Add folder backfill via `dnr backfill <folder>` and `dnr ingest <folder>`, processing local-provider
+  files while listing agent/vision gaps.
+- Make status coverage honest by separating usable cached transcripts from low-quality records that
+  need repair; add `dnr status --format json`.
+- Add SQLite `busy_timeout`, reduce read-path DB writes, support `--context` with composed queries,
+  and add `--any-tag` for OR tag queries.
+- Clarify installation wording around `pipx install donotreadagain` as the recommended path,
+  `uvx` as the one-off fallback, and audio ASR as an optional faster-whisper/ffmpeg setup.
+- Reframe dnr as the cache/trust/index layer for transcripts produced by local extractors, local ASR,
+  APIs, or the calling agent.
+
 ## 0.1.8
 
 ### Changed
