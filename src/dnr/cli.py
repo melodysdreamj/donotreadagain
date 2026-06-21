@@ -344,7 +344,11 @@ def _cmd_init(args) -> int:
         for path in args.agent_file:
             status = bootstrap.install_agent_file(path)
             print(f"{status} agent bootstrap in {path}")
-    else:
+    if args.global_agent is not None:
+        for path in bootstrap.global_agent_targets(args.global_agent):
+            status = bootstrap.install_global_agent_file(path)
+            print(f"{status} global agent bootstrap in {path}")
+    if not args.agent_file and args.global_agent is None:
         print("no per-folder note is installed — each file self-describes via its `_about` pointer.")
     print(f"agents fetch the skill once from {bootstrap.SKILL_RAW_URL} (or run `dnr skill`).")
     return 0
@@ -446,6 +450,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pin = sub.add_parser("init", help="ensure a signing key + optionally add an agent-file bootstrap")
     pin.add_argument("--agent-file", action="append", metavar="PATH",
                      help="append or upgrade the dnr bootstrap in AGENTS.md, CLAUDE.md, etc.; repeatable")
+    pin.add_argument("--global-agent", nargs="?", const="auto", metavar="TARGET",
+                     help="persist the global dnr habit to auto, codex, claude, all, or a markdown path")
     pin.set_defaults(fn=_cmd_init)
     sub.add_parser("skill", help="print the dnr agent skill (SKILL.md) for an agent to fetch/install").set_defaults(fn=_cmd_skill)
 

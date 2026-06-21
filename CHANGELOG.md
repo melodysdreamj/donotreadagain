@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.5
+
+### Added
+- `dnr init --global-agent` appends or upgrades a persistent dnr-first habit in the
+  current agent's global instruction file (`codex`, `claude`, `all`, or an explicit path).
+- The dnr skill now tells agents to persist that global habit on first use when supported.
+
 ## 0.1.4
 
 ### Changed
