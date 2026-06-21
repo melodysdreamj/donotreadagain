@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
-## Unreleased
+## 0.1.3
 
 ### Added
 - `dnr init --agent-file PATH` appends the one-line dnr bootstrap to agent instruction files
