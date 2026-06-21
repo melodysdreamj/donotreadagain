@@ -69,3 +69,23 @@ def test_tag_add_remove_and_reindex(tmp_path):
     assert ingest.current_tags(p) == ["면탈", "가압류"]
     # tagging a carrier file refreshes its index row immediately (no manual re-index)
     assert [r["path"] for r in index.query_compose(f, tags=["면탈"])] == ["a.pdf"]
+
+
+def test_tag_and_date_do_not_modify_carrier_file(sample_pdf):
+    from dnr import embed, hashing, index, ingest
+
+    ingest.ingest(sample_pdf)  # PDF carrier, but default storage is db-only.
+    before_hash = hashing.whole_hash(sample_pdf)
+    before_mtime_ns = sample_pdf.stat().st_mtime_ns
+
+    assert ingest.set_tags(sample_pdf, add=["법원문서", "갑제1호증"]) == ["법원문서", "갑제1호증"]
+    assert ingest.set_date(sample_pdf, "2026-06-22") == "2026-06-22"
+
+    assert hashing.whole_hash(sample_pdf) == before_hash
+    assert sample_pdf.stat().st_mtime_ns == before_mtime_ns
+    assert embed.extract(sample_pdf) is None
+
+    rec = index.db_only_record(sample_pdf.parent, sample_pdf)
+    assert rec["fields"]["tags"] == ["법원문서", "갑제1호증"]
+    assert rec["fields"]["start_date"] == "2026-06-22"
+    assert [r["path"] for r in index.query_compose(sample_pdf.parent, tags=["법원문서"])] == [sample_pdf.name]
