@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.1.8
+
+### Changed
+- Agent instructions now distinguish active-read quality repair from bulk OCR: if a file is needed
+  and its cached transcript is empty/garbled/unusable, agents should repair that file without asking,
+  but still ask before expanding to unrelated files or whole-folder OCR/searchability work.
+
 ## 0.1.7
 
 ### Changed
