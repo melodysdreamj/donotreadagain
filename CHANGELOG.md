@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## Unreleased
 
+## 0.2.3 - 2026-06-21
+
 ### Changed
 - Default all new records to db-only `.dnr.db` storage so original files stay byte-identical; in-file
   metadata records now require explicit `--embed`.
