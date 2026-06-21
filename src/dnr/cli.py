@@ -8,6 +8,18 @@ from pathlib import Path
 from . import __version__
 
 
+def _configure_utf8_stdio() -> None:
+    """Keep CLI output stable on Windows legacy code pages and redirected pipes."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except (OSError, TypeError, ValueError):
+            pass
+
+
 def _cmd_keygen(args) -> int:
     from . import keyring, signing
 
@@ -550,6 +562,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_utf8_stdio()
     args = _build_parser().parse_args(sys.argv[1:] if argv is None else argv)
     if not getattr(args, "fn", None):
         _build_parser().print_help()

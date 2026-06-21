@@ -3,6 +3,11 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses [SemVer](https://semver.org/).
 
+## 0.2.2 - 2026-06-21
+
+### Fixed
+- Force CLI stdout/stderr to UTF-8 so transcripts and Korean output survive Windows legacy code pages.
+
 ## 0.2.1 - 2026-06-21
 
 ### Fixed

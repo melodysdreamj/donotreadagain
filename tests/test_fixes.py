@@ -5,6 +5,14 @@ import unicodedata
 import pytest
 
 
+class _FakeTextStream:
+    def __init__(self):
+        self.kwargs = None
+
+    def reconfigure(self, **kwargs):
+        self.kwargs = kwargs
+
+
 @pytest.fixture(autouse=True)
 def _isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("DNR_HOME", str(tmp_path / "dnrhome"))
@@ -18,6 +26,20 @@ def _mkpdf(path, text):
     p.set_font("Helvetica", size=12)
     p.multi_cell(0, 8, text)
     p.output(str(path))
+
+
+def test_cli_forces_utf8_stdio(monkeypatch):
+    from dnr import cli
+
+    out = _FakeTextStream()
+    err = _FakeTextStream()
+    monkeypatch.setattr(cli.sys, "stdout", out)
+    monkeypatch.setattr(cli.sys, "stderr", err)
+
+    cli._configure_utf8_stdio()
+
+    assert out.kwargs == {"encoding": "utf-8"}
+    assert err.kwargs == {"encoding": "utf-8"}
 
 
 def test_nfc_path_query(tmp_path):
