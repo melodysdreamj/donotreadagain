@@ -15,7 +15,7 @@
     },
     "_about": {
       "type": "string",
-      "description": "self-describing pointer to the skill/spec; informational"
+      "description": "informational pointer to the skill/spec"
     },
     "content_hash": {
       "type": "string",

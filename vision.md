@@ -290,7 +290,7 @@ SELECT path FROM dnr WHERE json_extract(fields,'$.start_date') > '2024-01-01';
 **"The AI is the runtime; the instructions are the program."**
 
 - **Consumption (read/query)** = already-present tools like `sqlite3` / `exiftool`. Zero dnr install.
-- **Production (transcribe/embed)** = `uvx donotreadagain ingest <file>` run on demand, once per file. No resident daemon, no mandatory MCP.
+- **Production (transcribe/embed)** = `uvx donotreadagain ingest <file>` run on demand, once per file. No resident daemon, no mandatory adapter.
 - **dnr ships no transcription model.** The transcript is supplied by whoever is best placed: the **calling agent** (already a vision LLM — it reads the file and hands dnr the verbatim text), a **local model** (Whisper for audio, text-extract for born-digital PDFs, local OCR), or optionally an API. dnr's own code is just the deterministic glue (hash · embed · sign · index) over ubiquitous tools.
 - Discoverability: a copy-paste `AGENTS.md` stanza + `_dnr_readme` + a public spec URL.
 
@@ -366,7 +366,7 @@ Directly validates the audit's #1 doubt (PDF non-determinism). Holds → pillar 
 **Result (2026-06-20) — ✅ MAKE.** (`experiments/content-hash-invariance/`) PDF content_hash stayed **invariant** across default·object_streams·linearize·recompress·`normalize_content` (only whole_hash changed); the WAV audio payload was invariant under an ID3 write too. Finding: the default embed drifts whole_hash via a random `/ID` + `MetadataDate` → a **deterministic embed recipe** (`pikepdf.save(deterministic_id=True)` + `open_metadata(set_pikepdf_as_editor=False)` + deleting dates) makes re-embed byte-identical. → that is where gate 4 came from. Follow-ups remaining: real scanned PDF (image/JBIG2), multi-MB transcript, real mp3.
 
 ### After that
-Index/FTS query → enforced `dnr read` CLI (protocol from prose → code) → format expansion → optional MCP / curated export.
+Index/FTS query → enforced `dnr read` CLI (protocol from prose → code) → format expansion → optional adapters / curated export.
 
 ---
 

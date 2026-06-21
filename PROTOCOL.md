@@ -1,15 +1,17 @@
-# DNR Transcript Cache Protocol
+# Verified Transcript Cache Protocol
 
-The DNR Transcript Cache Protocol is a small contract for **verified transcript records**
-tied to expensive-to-parse source files. It lets agents and harnesses avoid repeated OCR,
-ASR, vision, PDF parsing, and Office extraction while keeping normal security boundaries
-intact.
+The Verified Transcript Cache Protocol is a small contract for **verified transcript records**
+tied to expensive-to-parse source files. It lets agents and harnesses avoid repeated OCR, ASR,
+vision, PDF parsing, and Office extraction while keeping normal security boundaries intact.
 
 `dnr` is the reference CLI implementation. A harness can call the CLI, or it can implement
 the protocol directly and remain compatible with the same records.
 
-It is deliberately narrower than a general knowledge format: dnr stores faithful text that
+It is deliberately narrower than a general knowledge format: it stores faithful text that
 came from a concrete file and proves that the text still matches that file.
+
+The protocol is transport-agnostic. It is not tied to a particular runtime, plugin system,
+RPC layer, or agent app; those are adapters around the same record and behavior.
 
 ## One-sentence contract
 
@@ -46,9 +48,10 @@ dnr ingest <file>    # optional local extractor/ASR path where available
 
 ## Record model
 
-A DNR record is signed JSON containing:
+A transcript-cache record is signed JSON containing:
 
-- `dnr`: protocol record version.
+- `dnr`: protocol record version. The field name stays `dnr` for compatibility with the
+  current record namespace.
 - `content_hash`: canonical content hash used for freshness.
 - `transcript`: faithful text and optional segments.
 - `provenance`: method, transcriber, version, guide/prompt identifiers, and confidence metadata.
@@ -111,11 +114,11 @@ Indexer support later.
 
 ## Non-goals
 
-- DNR does not define an OCR, ASR, vision, or embedding model.
-- DNR does not make cached text authoritative truth.
-- DNR does not define curated knowledge pages, runbooks, or semantic memory.
-- DNR does not ask agents to pre-process entire folders by default.
-- DNR does not require the `dnr` CLI when a harness implements compatible records natively.
+- The protocol does not define an OCR, ASR, vision, or embedding model.
+- The protocol does not make cached text authoritative truth.
+- The protocol does not define curated knowledge pages, runbooks, or semantic memory.
+- The protocol does not ask agents to pre-process entire folders by default.
+- The protocol does not require the `dnr` CLI when a harness implements compatible records natively.
 
 ## Reference implementation
 

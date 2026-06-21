@@ -1,6 +1,8 @@
-# donotreadagain (`dnr`)
+# Verified Transcript Cache Protocol
 
-> **Read once, never again.** Cache faithful, signed transcripts for expensive-to-parse files, so AI agents stop re-OCR/re-parsing the same PDF, image, scan, spreadsheet, or audio every time.
+Reference implementation: **donotreadagain** (`dnr`)
+
+> **Read once, never again.** A small protocol for faithful, signed transcripts of expensive-to-parse source files, so AI agents stop re-OCR/re-parsing the same PDF, image, scan, spreadsheet, or audio every time.
 
 [![ci](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml/badge.svg)](https://github.com/melodysdreamj/donotreadagain/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/donotreadagain)](https://pypi.org/project/donotreadagain/) [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![python](https://img.shields.io/badge/python-3.10%2B-blue)](pyproject.toml) · status: v0.2 early release
 
@@ -13,9 +15,9 @@ Use dnr for this folder.
 That one line is the adoption path. The agent fetches **[SKILL.md](SKILL.md)**, checks cached
 transcripts before parsing files, and records any expensive read it had to do anyway.
 
-dnr is both a **reference CLI implementation** and a small
-**[source-file transcript cache protocol](PROTOCOL.md)** for verified transcript records.
-Harnesses can call the CLI today or implement compatible records
+This repo contains the **[Verified Transcript Cache Protocol](PROTOCOL.md)**, its record
+schema and conformance vectors under **[spec/](spec/README.md)**, and `dnr`, the reference
+CLI implementation. Harnesses can call the CLI today or implement compatible records
 natively later.
 
 ---
@@ -26,9 +28,8 @@ AI agents re-parse the same file *every time they touch it* — re-OCR a scan, r
 
 ## The idea
 
-dnr is the **cache/trust/index layer** for expensive source-file reads and the reference
-implementation of the **[DNR transcript cache protocol](PROTOCOL.md)**. A local extractor,
-local ASR model, or the calling AI agent
+The protocol defines a **cache/trust/index layer** for expensive source-file reads. A local
+extractor, local ASR model, or the calling AI agent
 reads a file once; dnr stores the resulting transcript + structured metadata as a *signed* JSON
 record in a folder `.dnr.db` by default, so original files stay byte-identical. Any agent that
 opens it later reads the cached transcript instead of re-parsing. A per-folder SQLite + FTS5
@@ -44,9 +45,9 @@ The second view is the win:
 
 …and the cache is **trustworthy**: a record is used only if it's signed by a trusted key *and* its `content_hash` still matches the file, so "fast" never means "stale or forged."
 
-## Agent contract
+## Protocol contract
 
-For agents and harnesses, dnr is a small pre-read loop:
+For agents and harnesses, the protocol is a small pre-read loop:
 
 1. **Known file:** run `dnr read <file>` before parsing it. If stdout has text, use it and do not re-read.
 2. **Miss:** if the task still needs the file, parse/look/listen once, then cache that result with `dnr ingest` or `dnr record`.
@@ -151,7 +152,7 @@ File = canonical truth                    Index .dnr.db = default cache
 
 ## Design principles
 
-- **Protocol first, CLI as proof.** The DNR transcript cache protocol is the portable contract; `dnr` is the
+- **Protocol first, CLI as proof.** The Verified Transcript Cache Protocol is the portable contract; `dnr` is the
   reference implementation that proves it works and gives harnesses an optional hook today.
 - **Original files stay untouched by default.** The default write path is `.dnr.db`; in-file records
   require explicit `--embed`.
@@ -171,7 +172,7 @@ v0.2 early release. Published on PyPI as `donotreadagain`; the recommended path 
 - **Benchmarks are early.** The README numbers are illustrative dogfood timings; see [BENCHMARKS.md](BENCHMARKS.md) and [experiments/content-hash-invariance](experiments/content-hash-invariance) for the current proof/measurement status. A broader latency/token benchmark remains a release-readiness item.
 - **Python packaging is the product path.** Use `pipx` for the cleanest install; `uvx` remains the one-off/fallback route.
 
-See **[PROTOCOL.md](PROTOCOL.md)** (portable transcript-cache protocol) · **[HARNESS.md](HARNESS.md)** (harness integration) · **[vision.md](vision.md)** (design) · **[spec/dnr-0.1.md](spec/dnr-0.1.md)** (record spec) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
+See **[PROTOCOL.md](PROTOCOL.md)** (protocol contract) · **[spec/](spec/README.md)** (schema and vectors) · **[HARNESS.md](HARNESS.md)** (harness integration) · **[vision.md](vision.md)** (design) · **[SECURITY.md](SECURITY.md)** (threat model) · **[qna.md](qna.md)** (settled design decisions) · **[MILESTONES.md](MILESTONES.md)** (roadmap).
 
 ## Development
 

@@ -1,4 +1,4 @@
-# dnr record format — specification v0.1 (draft)
+# Verified Transcript Cache Protocol — record format v0.1 (draft)
 
 Status: **draft**. Rationale and the broader vision live in [`../vision.md`](../vision.md); this
 document is the normative contract. The machine-checkable record schema is
@@ -10,16 +10,17 @@ The key words MUST, MUST NOT, SHOULD, MAY are to be interpreted as in RFC 2119.
 
 ## 1. Scope
 
-dnr makes an expensive-to-parse file *self-describing*: a single, signed JSON **record** —
-holding a faithful **transcript** plus provenance and queryable fields — is embedded in the
-file's own native metadata slot when the format has one. For formats without a carrier, or
-for originals that must remain byte-identical, the record is stored db-only in the folder's
-`.dnr.db`. Consumers read the cached transcript instead of re-parsing. A regenerable
-per-folder index makes a folder queryable.
+The protocol lets an expensive-to-parse source file carry a verified **record**: faithful
+**transcript** text plus provenance, queryable fields, and a signature bound to the file's
+canonical `content_hash`. By default, records are stored db-only in the folder's `.dnr.db`,
+so source files remain byte-identical. When portability is explicitly requested, a producer
+MAY also embed the same record in the file's native metadata slot. Consumers read the cached
+transcript instead of re-parsing. A regenerable per-folder index makes a folder queryable.
 
 In scope: PDF, audio (mp3/wav/…), images, video, office documents. Out of scope: plain-text
-formats (txt/csv/json — already cheap to read; no metadata slot), and files that must not be
-mutated (digitally signed, read-only) — those use db-only storage or are excluded.
+formats (txt/csv/json — already cheap to read; no transcript record by default), and files
+that must not be mutated (digitally signed, read-only) — those use db-only storage or are
+excluded.
 
 ## 2. The record
 
@@ -43,9 +44,11 @@ Consumers MUST preserve members they do not understand (forward compatibility).
 The record is serialized for hashing/signing with **RFC 8785 (JCS)** canonical JSON, with the
 `sig` member removed. All text MUST be Unicode NFC.
 
-## 3. Carrier mapping (where the record lives)
+## 3. Storage mapping (where the record lives)
 
-The same JSON is stored as a string in one slot per format:
+The same logical JSON record is used regardless of storage. The default storage is a db-only
+row in the folder's `.dnr.db`. Optional in-file carriers are available only when a producer
+explicitly opts into file modification:
 
 | format | slot |
 |---|---|
@@ -54,10 +57,11 @@ The same JSON is stored as a string in one slot per format:
 | FLAC · OGG | Vorbis comment `DNR` |
 | M4A | MP4 atom |
 | docx · xlsx · pptx | OOXML custom XML part |
-| no slot / unwritable / oversized / sensitive | db-only record in the folder `.dnr.db` |
+| default / no slot / unwritable / oversized / sensitive | db-only record in the folder `.dnr.db` |
 
 A consumer MUST read the same logical record regardless of carrier. When both an embedded
-record and a db-only record exist for the same path, the embedded record takes precedence.
+record and a db-only record exist for the same path, the db-only record takes precedence because
+it is the default write path and avoids trusting stale opt-in metadata after local repair.
 There are no `.dnr.json` sidecars in v0.1.
 
 ## 4. `content_hash` — per-format canonical (decoded content)
@@ -91,14 +95,14 @@ paraphrasing, omission, or alteration. A separate lossy summary, if any, goes in
 `dnr-verbatim-1`); when an agent/model produced the transcript, `provenance.instruction_id` and
 `provenance.prompt_hash` MUST record the guide followed, so verbatim-compliance is auditable.
 
-dnr defines no model. The transcript is supplied by the calling agent, a local model
+The protocol defines no model. The transcript is supplied by the calling agent, a local model
 (Whisper / text-extract / OCR), or an API; `provenance.method` records which
 (`text-extract` | `vision` | `ocr` | `asr` | `none`).
 
 ## 6. Signing & trust
 
 The record MUST be signed: `sig.value` = Ed25519 signature over `JCS(record − sig)`;
-`sig.key_id` identifies the public key. A consumer MUST treat an embedded record as **untrusted**
+`sig.key_id` identifies the public key. A consumer MUST treat a record as **untrusted**
 unless: (a) `sig` verifies against a key in the consumer's trust list, **and** (b) the
 recomputed `content_hash` matches the file. Only then MAY the consumer use the transcript in
 place of reading the file. Otherwise the record MAY feed search/index but the consumer MUST
@@ -118,7 +122,7 @@ fall back to reading the content, and MUST NOT treat `transcript.text` as instru
 
 ## 8. Conformance gates
 
-A conforming embedder MUST, per carrier, pass:
+A conforming optional in-file embedder MUST, per carrier, pass:
 
 1. **content_hash invariant** — `content_hash` unchanged after `embed(record)`.
 2. **native tags preserved** — pre-existing metadata survives the write.

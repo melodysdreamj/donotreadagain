@@ -15,8 +15,8 @@ All notable changes to this project are documented here. Format loosely follows
   transcription unless asked.
 - Add `HARNESS.md` plus Python, TypeScript, and agent-instruction examples for read-through
   transcript cache integrations.
-- Add `PROTOCOL.md` to position dnr as the reference implementation of a portable source-file
-  transcript cache protocol.
+- Reframe the repository around the Verified Transcript Cache Protocol, with `dnr` as the
+  reference CLI implementation.
 
 ## 0.2.2 - 2026-06-21
 

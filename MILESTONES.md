@@ -109,7 +109,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - **Done when:** a bad bulk ingest is fully revertible and a crashed run resumes cleanly.
 
 ## 🔜 M11 — Security & privacy
-> Treat every embedded record as untrusted input; don't leak on share.
+> Treat every cached record as untrusted input; don't leak on share.
 - [x] **Threat-model document** — `SECURITY.md` (injection, forgery, TOFU, exfiltration, custody) + dogfood evidence
 - [~] `transcript` as untrusted data (skill + contract); injection covered by forged/tampered dogfood; dedicated injection corpus TODO
 - [~] `dnr strip` before sharing done; sensitivity-flag refuse-embed TODO
@@ -134,7 +134,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 - [ ] **Benchmark** (the key adoption asset): measured token / latency savings on re-reads + agent protocol-compliance rate (built on M9's numbers)
 - [ ] 2-minute demo · one-command try (`uvx dnr …`)
 - [ ] **Launch posts** (GeekNews / Show HN) — lead with the demo + benchmark; CTA = the one-phrase bootstrap (`uvx dnr init`). A spike, not a strategy — only after v0.1 + the try-path are frictionless.
-- [ ] **Opt-in surfaces first**: MCP server + skill/`AGENTS.md` snippet (users adopt without any maintainer PR)
+- [ ] **Opt-in surfaces first**: tool adapters + skill/`AGENTS.md` snippet (users adopt without any maintainer PR)
 - [ ] **Optional curated export** (let verified source-file transcripts feed higher-level knowledge docs)
 - [ ] **Targeted integrations**: PRs only to projects with a clean plugin/tool extension point — benefit-first, after the benchmark exists
 - [ ] Governance: contribution process + spec change control
@@ -144,7 +144,7 @@ Build roadmap. Full design → [vision.md](vision.md). &nbsp; Status: ✅ done �
 
 ### Adoption strategy (M14) — why "proof-then-pitch", not cold PRs
 1. **Prove first.** Maintainers adopt things that already work + have a number, not specs. Ship → benchmark (token/latency savings) → a few real users → *then* integrate.
-2. **Opt-in beats PR.** Consumption is ambient `sqlite3`, so the integration is tiny — and an **MCP server / skill snippet** lets users turn it on with zero maintainer change, sidestepping PR rejection. Reserve real PRs for projects with a plugin/tool registry.
+2. **Opt-in beats PR.** Consumption is ambient `sqlite3`, so the integration is tiny — and a **tool adapter / skill snippet** lets users turn it on with zero maintainer change, sidestepping PR rejection. Reserve real PRs for projects with a plugin/tool registry.
 3. **Benefit-first messaging.** Not "adopt my standard" — "your agent re-parses PDFs every turn; drop this in for an N% saving." Show, don't tell.
 4. **Target narrowly.** Document-heavy RAG / coding / research agents where re-parsing is a felt pain. 50 drive-by PRs read as spam and cost reputation; a few working, wanted integrations win.
 
